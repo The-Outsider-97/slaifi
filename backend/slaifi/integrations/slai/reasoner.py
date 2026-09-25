@@ -193,10 +193,15 @@ class SlaiFinancialReasoner:
 
     def _runtime_status(self) -> ReasoningStatus:
         payload = _runtime_payload(self._agent)
-        health = str(payload.get("health", payload.get("status", "healthy"))).lower()
-        if health in {"unavailable", "failed", "error"}:
+        state = str(
+            payload.get(
+                "operational_state",
+                payload.get("health", payload.get("status", "healthy")),
+            )
+        ).lower()
+        if state in {"unavailable", "failed", "error", "stopped"}:
             return ReasoningStatus.UNAVAILABLE
-        if health in {"degraded", "warning"}:
+        if state in {"degraded", "warning"}:
             return ReasoningStatus.DEGRADED
         return ReasoningStatus.AVAILABLE
 
