@@ -3,9 +3,13 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from logs.logger import get_logger
+
 from slaifi.core.utils.errors import ValidationError
 from slaifi.domain.market.models import AssetRef, PriceQuote
 from slaifi.domain.market.provider import MarketDataProvider
+
+logger = get_logger("SLAIFI Market Overview")
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,4 +31,5 @@ class GetMarketOverview:
 
     async def execute(self) -> MarketOverview:
         quotes = tuple(await self._provider.get_quotes(self._assets))
+        logger.debug("Market overview assembled from %d quote(s)", len(quotes))
         return MarketOverview(quotes=quotes, generated_at=datetime.now(UTC))
