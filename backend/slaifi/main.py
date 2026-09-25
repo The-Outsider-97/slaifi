@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from logs.logger import get_logger
 
+from slaifi import __version__
 from slaifi.api.errors import install_exception_handlers
 from slaifi.api.router import api_router
 from slaifi.application.analysis import AnalyzeMarketSeries, AnalyzePortfolio
@@ -73,7 +74,7 @@ def create_app(
 
     app = FastAPI(
         title="SLAIFI API",
-        version="0.4.0",
+        version=__version__,
         description="SLAI Financial Intelligence application API",
         lifespan=lifespan,
     )
