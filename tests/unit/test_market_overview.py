@@ -1,8 +1,7 @@
+import asyncio
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
-
-import pytest
 
 from slaifi.application.market.get_overview import GetMarketOverview
 from slaifi.domain.market.models import AssetRef, PriceQuote
@@ -23,11 +22,10 @@ class StubProvider:
         ]
 
 
-@pytest.mark.asyncio
-async def test_market_overview_uses_provider_and_preserves_normalized_quotes() -> None:
+def test_market_overview_uses_provider_and_preserves_normalized_quotes() -> None:
     service = GetMarketOverview(StubProvider(), (AssetRef("spy"), AssetRef("qqq")))
 
-    overview = await service.execute()
+    overview = asyncio.run(service.execute())
 
     assert [quote.asset.symbol for quote in overview.quotes] == ["SPY", "QQQ"]
     assert all(quote.price == Decimal("123.45") for quote in overview.quotes)
