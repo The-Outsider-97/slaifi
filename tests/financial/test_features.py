@@ -3,7 +3,7 @@ import statistics
 
 import pytest
 
-from slaifi.core.exceptions import InsufficientDataError, ValidationError
+from slaifi.core.utils.errors import ValidationError
 from slaifi.engines.features import (
     drawdown_series,
     log_returns,
@@ -14,6 +14,7 @@ from slaifi.engines.features import (
     simple_returns,
     volume_changes,
 )
+from slaifi.engines.utils.errors import InsufficientDataError
 
 
 def test_simple_returns_reference_values() -> None:
@@ -34,21 +35,11 @@ def test_rolling_return_alignment() -> None:
 
 
 def test_rolling_mean_reference() -> None:
-    assert rolling_mean([1.0, 2.0, 3.0, 4.0], 3) == (
-        None,
-        None,
-        2.0,
-        3.0,
-    )
+    assert rolling_mean([1.0, 2.0, 3.0, 4.0], 3) == (None, None, 2.0, 3.0)
 
 
 def test_rolling_max_reference() -> None:
-    assert rolling_max([1.0, 3.0, 2.0, 5.0], 2) == (
-        None,
-        3.0,
-        3.0,
-        5.0,
-    )
+    assert rolling_max([1.0, 3.0, 2.0, 5.0], 2) == (None, 3.0, 3.0, 5.0)
 
 
 def test_rolling_volatility_explicit_annualization() -> None:
