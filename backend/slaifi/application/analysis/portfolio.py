@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from slaifi.application.contracts import FinancialReasoner, ReasoningRequest
 from slaifi.application.models import GoalEvaluationBundle, PortfolioAnalysisResult
+from slaifi.core.exceptions import ValidationError
 from slaifi.domain.assets import AssetId
 from slaifi.domain.goals import FinancialGoal
 from slaifi.domain.portfolio import Portfolio
@@ -46,7 +47,7 @@ class AnalyzePortfolio:
         risk = None
         if returns is not None or equity_values is not None or periods_per_year is not None:
             if returns is None or equity_values is None or periods_per_year is None:
-                raise ValueError(
+                raise ValidationError(
                     "returns, equity_values, and periods_per_year must be supplied together"
                 )
             weights = [
@@ -84,11 +85,10 @@ class AnalyzePortfolio:
         if self._reasoner is None or not reasoning_objective:
             return result
 
-        evidence = self._evidence(result)
         reasoning = self._reasoner.reason(
             ReasoningRequest(
                 operation="portfolio_analysis",
-                evidence=evidence,
+                evidence=self._evidence(result),
                 objective=reasoning_objective,
                 constraints=self._goal_constraints(goal),
                 assumptions={
@@ -97,10 +97,7 @@ class AnalyzePortfolio:
                     "assumed_annual_return_rate": assumed_annual_return_rate,
                     "assumed_annual_income_yield_rate": assumed_annual_income_yield_rate,
                 },
-                uncertainty={
-                    "prediction_model_used": False,
-                    "fx_conversion_used": False,
-                },
+                uncertainty={"prediction_model_used": False, "fx_conversion_used": False},
                 correlation_id=portfolio.portfolio_id,
             )
         )
