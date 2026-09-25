@@ -2,9 +2,12 @@
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from logs.logger import get_logger
 
 from slaifi.application.contracts import ReasoningUnavailableError
 from slaifi.core.utils.errors import CalculationError, SlaifiError, ValidationError
+
+logger = get_logger("SLAIFI API")
 
 
 def install_exception_handlers(app: FastAPI) -> None:
@@ -13,6 +16,7 @@ def install_exception_handlers(app: FastAPI) -> None:
         _: Request,
         exc: ReasoningUnavailableError,
     ) -> JSONResponse:
+        logger.warning("Required SLAI reasoning is unavailable: %s", exc)
         return JSONResponse(
             status_code=503,
             content={"error": "reasoning_unavailable", "detail": str(exc)},

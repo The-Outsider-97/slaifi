@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from logs.logger import get_logger
 
 from slaifi.api.errors import install_exception_handlers
 from slaifi.api.router import api_router
@@ -18,11 +19,12 @@ from slaifi.application.contracts import (
 from slaifi.application.goals import EvaluateFinancialGoal
 from slaifi.application.market.get_overview import GetMarketOverview
 from slaifi.core.config import Settings, get_settings
-from slaifi.core.logging import configure_logging
 from slaifi.domain.market.models import AssetRef
 from slaifi.domain.market.provider import MarketDataProvider
 from slaifi.infrastructure.market_data.mock_provider import MockMarketDataProvider
 from slaifi.integrations.slai import SlaiFinancialReasoner
+
+logger = get_logger("SLAIFI Composition")
 
 
 def create_app(
@@ -35,14 +37,12 @@ def create_app(
 ) -> FastAPI:
     """Create SLAIFI and wire concrete runtime dependencies at the composition root.
 
-    An embedding SLAI process should inject its existing AgentFactory and
-    SharedMemory together. Standalone SLAIFI can omit both; the SLAI adapter
-    then attempts lazy discovery and degrades cleanly when the host is absent.
+    Logging configuration is deliberately not performed here. The wider SLAI
+    host, or ``run_slaifi.py`` when used as the root launcher, owns process-level
+    logging configuration.
     """
 
     runtime_settings = settings or get_settings()
-    configure_logging(runtime_settings.log_level)
-
     provider = market_provider or MockMarketDataProvider()
     owns_reasoner = financial_reasoner is None
     reasoner = financial_reasoner or SlaiFinancialReasoner(
@@ -73,7 +73,7 @@ def create_app(
 
     app = FastAPI(
         title="SLAIFI API",
-        version="0.3.0",
+        version="0.4.0",
         description="SLAI Financial Intelligence application API",
         lifespan=lifespan,
     )
@@ -86,10 +86,7 @@ def create_app(
     )
     install_exception_handlers(app)
 
-    assets = tuple(
-        AssetRef(symbol=symbol)
-        for symbol in runtime_settings.market_overview_symbols
-    )
+    assets = tuple(AssetRef(symbol=symbol) for symbol in runtime_settings.market_overview_symbols)
     app.state.settings = runtime_settings
     app.state.financial_reasoner = reasoner
     app.state.market_overview_service = GetMarketOverview(provider=provider, assets=assets)
@@ -97,6 +94,7 @@ def create_app(
     app.state.portfolio_analysis_service = AnalyzePortfolio(reasoner=reasoner)
     app.state.goal_evaluation_service = EvaluateFinancialGoal(reasoner=reasoner)
     app.include_router(api_router)
+    logger.debug("SLAIFI application composition completed")
     return app
 
 

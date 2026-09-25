@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import importlib
 import json
-import logging
 import uuid
-from dataclasses import asdict, is_dataclass
-from datetime import datetime
-from decimal import Decimal
-from enum import Enum
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
+
+from logs.logger import get_logger
 
 from slaifi.application.contracts import (
     ReasoningRequest,
@@ -18,18 +16,13 @@ from slaifi.application.contracts import (
     ReasoningStatus,
     ReasoningUnavailableError,
 )
-from slaifi.core.utils.errors import ConfigurationError
+from slaifi.core.utils import ConfigurationError, to_json_safe
 
-logger = logging.getLogger(__name__)
+logger = get_logger("SLAIFI SLAI Integration")
 
 
 class SlaiFinancialReasoner:
-    """Use SLAI AgentFactory + SharedMemory without coupling lower layers to SLAI.
-
-    The adapter can either receive host-owned SLAI runtime objects or lazily create
-    its own runtime when ``src`` is importable. Host-owned objects are never closed
-    by SLAIFI.
-    """
+    """Use SLAI AgentFactory + SharedMemory without coupling lower layers to SLAI."""
 
     def __init__(
         self,
@@ -87,10 +80,10 @@ class SlaiFinancialReasoner:
             "source": "slaifi",
             "operation": request.operation,
             "objective": request.objective,
-            "evidence": _json_safe(request.evidence),
-            "constraints": _json_safe(request.constraints),
-            "assumptions": _json_safe(request.assumptions),
-            "uncertainty": _json_safe(request.uncertainty),
+            "evidence": to_json_safe(request.evidence),
+            "constraints": to_json_safe(request.constraints),
+            "assumptions": to_json_safe(request.assumptions),
+            "uncertainty": to_json_safe(request.uncertainty),
             "correlation_id": correlation_id,
             "request_id": request.request_id,
         }
@@ -131,10 +124,7 @@ class SlaiFinancialReasoner:
                 request_id=request.request_id,
             )
         except Exception as exc:
-            logger.exception(
-                "SLAI reasoning failed",
-                extra={"component": "slai", "operation": request.operation},
-            )
+            logger.exception("SLAI reasoning failed during %s", request.operation)
             if self._required:
                 raise ReasoningUnavailableError(
                     f"SLAI reasoning failed: {type(exc).__name__}: {exc}"
@@ -151,10 +141,7 @@ class SlaiFinancialReasoner:
 
     def status(self) -> ReasoningResult:
         if not self._enabled:
-            return ReasoningResult(
-                status=ReasoningStatus.DISABLED,
-                interpretation=None,
-            )
+            return ReasoningResult(status=ReasoningStatus.DISABLED, interpretation=None)
         if not self._ensure_runtime():
             return ReasoningResult(
                 status=ReasoningStatus.UNAVAILABLE,
@@ -178,22 +165,14 @@ class SlaiFinancialReasoner:
                 try:
                     release(self._agent_type)
                 except Exception as exc:
-                    logger.warning(
-                        "Unable to release SLAI agent: %s",
-                        exc,
-                        extra={"component": "slai", "operation": "release"},
-                    )
+                    logger.warning("Unable to release SLAI agent: %s", exc)
         if self._owns_runtime and self._shared_memory is not None:
             close = getattr(self._shared_memory, "close", None)
             if callable(close):
                 try:
                     close()
                 except Exception as exc:
-                    logger.warning(
-                        "Unable to close SLAI shared memory: %s",
-                        exc,
-                        extra={"component": "slai", "operation": "close_memory"},
-                    )
+                    logger.warning("Unable to close SLAI shared memory: %s", exc)
         self._agent = None
         if self._owns_runtime:
             self._factory = None
@@ -207,9 +186,7 @@ class SlaiFinancialReasoner:
                 factory_module = importlib.import_module("src.agents.agent_factory")
                 self._factory = factory_module.AgentFactory()
             if self._shared_memory is None:
-                memory_module = importlib.import_module(
-                    "src.agents.collaborative.shared_memory"
-                )
+                memory_module = importlib.import_module("src.agents.collaborative.shared_memory")
                 self._shared_memory = memory_module.SharedMemory()
             self._agent = self._factory.create(
                 self._agent_type,
@@ -221,10 +198,7 @@ class SlaiFinancialReasoner:
             self._initialization_error = (
                 f"SLAI runtime unavailable: {type(exc).__name__}: {exc}"
             )
-            logger.warning(
-                self._initialization_error,
-                extra={"component": "slai", "operation": "initialize"},
-            )
+            logger.warning("%s", self._initialization_error)
             return False
 
     def _memory_set(self, key: str, value: Any) -> None:
@@ -240,11 +214,7 @@ class SlaiFinancialReasoner:
         except TypeError:
             self._shared_memory.set(key, value)
         except Exception as exc:
-            logger.warning(
-                "SLAI shared-memory write failed: %s",
-                exc,
-                extra={"component": "slai", "operation": "shared_memory_set"},
-            )
+            logger.warning("SLAI shared-memory write failed: %s", exc)
 
     def _runtime_status(self) -> ReasoningStatus:
         payload = _runtime_payload(self._agent)
@@ -319,7 +289,7 @@ def _agent_version(agent: Any) -> str | None:
 
 
 def _mapping_result(value: Any) -> dict[str, Any]:
-    safe = _json_safe(value)
+    safe = to_json_safe(value)
     if isinstance(safe, dict):
         return safe
     return {"result": safe}
@@ -333,19 +303,3 @@ def _extract_interpretation(result: Mapping[str, Any]) -> str | None:
     if result:
         return json.dumps(result, ensure_ascii=False, sort_keys=True, default=str)
     return None
-
-
-def _json_safe(value: Any) -> Any:
-    if is_dataclass(value) and not isinstance(value, type):
-        return _json_safe(asdict(value))
-    if isinstance(value, Mapping):
-        return {str(key): _json_safe(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple, set, frozenset)):
-        return [_json_safe(item) for item in value]
-    if isinstance(value, Enum):
-        return _json_safe(value.value)
-    if isinstance(value, (datetime, Decimal)):
-        return str(value)
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
-    return str(value)
