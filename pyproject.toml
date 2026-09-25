@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slaifi"
-version = "0.1.0"
+version = "0.2.0"
 description = "SLAI Financial Intelligence"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -28,7 +28,6 @@ dev = [
 
 [tool.setuptools]
 package-dir = { "" = "backend" }
-
 [tool.setuptools.packages.find]
 where = ["backend"]
 
@@ -41,7 +40,6 @@ testpaths = ["tests"]
 target-version = "py312"
 line-length = 100
 src = ["backend", "tests"]
-
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 

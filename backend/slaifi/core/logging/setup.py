@@ -1,9 +1,18 @@
-"""Structured logging configuration using the Python standard library."""
+"""Structured logging built only on the Python standard library."""
 
 import json
 import logging
 from datetime import UTC, datetime
 from typing import Any
+
+_CONTEXT_FIELDS = (
+    "component",
+    "operation",
+    "asset",
+    "portfolio_id",
+    "calculation_id",
+    "model_version",
+)
 
 
 class JsonFormatter(logging.Formatter):
@@ -16,13 +25,17 @@ class JsonFormatter(logging.Formatter):
             "logger": record.name,
             "message": record.getMessage(),
         }
+        for field in _CONTEXT_FIELDS:
+            value = getattr(record, field, None)
+            if value is not None:
+                payload[field] = value
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
-        return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        return json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str)
 
 
 def configure_logging(level: str) -> None:
-    """Configure the root logger once for API and background-process compatibility."""
+    """Configure process logging without emitting secrets or portfolio payloads."""
 
     handler = logging.StreamHandler()
     handler.setFormatter(JsonFormatter())

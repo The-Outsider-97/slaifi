@@ -1,0 +1,39 @@
+name: Lower Layers
+
+on:
+  push:
+    branches: [core-domain-engines]
+  pull_request:
+    branches: [architecture-foundation, main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Ruff
+        run: ruff check backend tests
+      - name: Mypy
+        run: mypy backend
+      - name: Tests
+        run: pytest
+      - name: Lower-layer import smoke test outside repository cwd
+        run: |
+          cd /tmp
+          python - <<'PY'
+          from slaifi.core.types import CurrencyCode
+          from slaifi.domain.assets import AssetId
+          from slaifi.engines.risk import maximum_drawdown
+          assert CurrencyCode("usd") == "USD"
+          assert AssetId("abc").symbol == "ABC"
+          assert abs(maximum_drawdown([100.0, 80.0]) + 0.2) < 1e-12
+          PY
