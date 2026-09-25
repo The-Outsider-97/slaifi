@@ -1,14 +1,15 @@
 """FastAPI dependency accessors for pre-wired application services."""
 
-from typing import cast
+from typing import Annotated, cast
 
-from fastapi import Request
+from fastapi import Header, Request
 
 from slaifi.application.analysis import AnalyzeMarketSeries, AnalyzePortfolio
 from slaifi.application.contracts import FinancialReasoner
 from slaifi.application.goals import EvaluateFinancialGoal
 from slaifi.application.market.get_overview import GetMarketOverview
 from slaifi.core.config import Settings
+from slaifi.core.exceptions import ValidationError
 
 
 def _state_value(request: Request, name: str) -> object:
@@ -40,3 +41,18 @@ def get_financial_reasoner(request: Request) -> FinancialReasoner:
 
 def get_runtime_settings(request: Request) -> Settings:
     return cast(Settings, _state_value(request, "settings"))
+
+
+def get_request_id(
+    x_request_id: Annotated[str | None, Header(alias="X-Request-ID")] = None,
+) -> str | None:
+    """Validate caller trace metadata without using it as SLAI's unique correlation key."""
+
+    if x_request_id is None:
+        return None
+    normalized = x_request_id.strip()
+    if not normalized:
+        raise ValidationError("X-Request-ID must not be blank")
+    if len(normalized) > 128:
+        raise ValidationError("X-Request-ID must not exceed 128 characters")
+    return normalized

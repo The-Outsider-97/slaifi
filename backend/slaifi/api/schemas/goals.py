@@ -4,7 +4,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from slaifi.application.models import GoalEvaluationBundle
+from slaifi.api.schemas.common import ReasoningResponse
+from slaifi.application.models import GoalAnalysisResult, GoalEvaluationBundle
 from slaifi.domain.assets import AssetClass
 from slaifi.domain.goals import (
     FinancialGoal,
@@ -111,6 +112,8 @@ class ReturnGoalEvaluationResponse(BaseModel):
 
 
 class GoalEvaluationResponse(BaseModel):
+    """Authoritative deterministic goal arithmetic only."""
+
     income: IncomeGoalEvaluationResponse | None
     returns: ReturnGoalEvaluationResponse | None
 
@@ -149,3 +152,22 @@ class EvaluateGoalRequest(BaseModel):
     assumed_annual_return_rate: float | None = Field(default=None, gt=-1.0)
     assumed_annual_income_yield_rate: float | None = Field(default=None, ge=0.0)
     current_expected_annual_income: Decimal | None = Field(default=None, ge=0)
+    reasoning_objective: str | None = Field(default=None, max_length=2000)
+
+
+class GoalAnalysisResponse(BaseModel):
+    """Goal calculations plus optional, clearly separate SLAI interpretation."""
+
+    evaluation: GoalEvaluationResponse
+    reasoning: ReasoningResponse | None
+
+    @classmethod
+    def from_application(cls, result: GoalAnalysisResult) -> "GoalAnalysisResponse":
+        return cls(
+            evaluation=GoalEvaluationResponse.from_application(result.evaluation),
+            reasoning=(
+                ReasoningResponse.from_application(result.reasoning)
+                if result.reasoning is not None
+                else None
+            ),
+        )

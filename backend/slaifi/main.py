@@ -1,5 +1,7 @@
 """SLAIFI backend composition root."""
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI
@@ -34,17 +36,46 @@ def create_app(
     """Create SLAIFI and wire concrete runtime dependencies at the composition root.
 
     An embedding SLAI process should inject its existing AgentFactory and
-    SharedMemory instances. Standalone SLAIFI can omit them; the SLAI adapter
+    SharedMemory together. Standalone SLAIFI can omit both; the SLAI adapter
     then attempts lazy discovery and degrades cleanly when the host is absent.
     """
 
     runtime_settings = settings or get_settings()
     configure_logging(runtime_settings.log_level)
 
+    provider = market_provider or MockMarketDataProvider()
+    owns_reasoner = financial_reasoner is None
+    reasoner = financial_reasoner or SlaiFinancialReasoner(
+        enabled=runtime_settings.slai_enabled,
+        required=runtime_settings.slai_required,
+        agent_type=runtime_settings.slai_reasoning_agent,
+        reasoning_type=runtime_settings.slai_reasoning_type,
+        memory_ttl_seconds=runtime_settings.slai_memory_ttl_seconds,
+        factory=slai_factory,
+        shared_memory=slai_shared_memory,
+    )
+
+    if runtime_settings.slai_required:
+        status = reasoner.status()
+        if status.status in {ReasoningStatus.UNAVAILABLE, ReasoningStatus.DISABLED}:
+            detail = status.warnings[0] if status.warnings else "SLAI runtime unavailable"
+            raise ReasoningUnavailableError(detail)
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        try:
+            yield
+        finally:
+            if owns_reasoner:
+                close = getattr(reasoner, "close", None)
+                if callable(close):
+                    close()
+
     app = FastAPI(
         title="SLAIFI API",
         version="0.3.0",
         description="SLAI Financial Intelligence application API",
+        lifespan=lifespan,
     )
     app.add_middleware(
         CORSMiddleware,
@@ -55,22 +86,6 @@ def create_app(
     )
     install_exception_handlers(app)
 
-    provider = market_provider or MockMarketDataProvider()
-    reasoner = financial_reasoner or SlaiFinancialReasoner(
-        enabled=runtime_settings.slai_enabled,
-        required=runtime_settings.slai_required,
-        agent_type=runtime_settings.slai_reasoning_agent,
-        reasoning_type=runtime_settings.slai_reasoning_type,
-        memory_ttl_seconds=runtime_settings.slai_memory_ttl_seconds,
-        factory=slai_factory,
-        shared_memory=slai_shared_memory,
-    )
-    if runtime_settings.slai_required:
-        status = reasoner.status()
-        if status.status in {ReasoningStatus.UNAVAILABLE, ReasoningStatus.DISABLED}:
-            detail = status.warnings[0] if status.warnings else "SLAI runtime unavailable"
-            raise ReasoningUnavailableError(detail)
-
     assets = tuple(
         AssetRef(symbol=symbol)
         for symbol in runtime_settings.market_overview_symbols
@@ -80,7 +95,7 @@ def create_app(
     app.state.market_overview_service = GetMarketOverview(provider=provider, assets=assets)
     app.state.market_analysis_service = AnalyzeMarketSeries(reasoner=reasoner)
     app.state.portfolio_analysis_service = AnalyzePortfolio(reasoner=reasoner)
-    app.state.goal_evaluation_service = EvaluateFinancialGoal()
+    app.state.goal_evaluation_service = EvaluateFinancialGoal(reasoner=reasoner)
     app.include_router(api_router)
     return app
 
