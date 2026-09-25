@@ -1,70 +1,176 @@
 """Limited initial technical-analysis indicator set."""
-from dataclasses import dataclass
+
 from collections.abc import Sequence
+from dataclasses import dataclass
+
 from slaifi.core.exceptions import InsufficientDataError, ValidationError
 from slaifi.domain.market import OHLCVBar
 from slaifi.engines._validation import chronological_bars, positive_series
 from slaifi.engines.features import rolling_mean
-AlignedSeries=tuple[float|None,...]
 
-@dataclass(frozen=True,slots=True)
+AlignedSeries = tuple[float | None, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class MACDResult:
     macd_line: AlignedSeries
     signal_line: AlignedSeries
     histogram: AlignedSeries
 
-def sma(values: Sequence[float], window: int)->AlignedSeries: return rolling_mean(values,window)
 
-def ema(values: Sequence[float], span: int)->AlignedSeries:
-    if span<=0: raise ValidationError("span must be positive")
-    data=positive_series(values,minimum=span,name="values"); alpha=2.0/(span+1); seed=sum(data[:span])/span
-    out:list[float|None]=[None]*(span-1)+[seed]; previous=seed
-    for value in data[span:]: previous=alpha*value+(1-alpha)*previous; out.append(previous)
-    return tuple(out)
+def sma(values: Sequence[float], window: int) -> AlignedSeries:
+    """Simple moving average with warm-up values set to None."""
 
-def momentum(prices: Sequence[float], period: int)->AlignedSeries:
-    if period<=0: raise ValidationError("period must be positive")
-    data=positive_series(prices,minimum=period+1,name="prices")
-    return (*([None]*period),*(data[i]/data[i-period]-1.0 for i in range(period,len(data))))
+    return rolling_mean(values, window)
 
-def _rsi_value(gain: float,loss: float)->float:
-    if loss==0: return 50.0 if gain==0 else 100.0
-    rs=gain/loss; return 100.0-(100.0/(1.0+rs))
 
-def rsi(prices: Sequence[float], period: int=14)->AlignedSeries:
-    if period<=0: raise ValidationError("period must be positive")
-    data=positive_series(prices,minimum=period+1,name="prices"); changes=[data[i]-data[i-1] for i in range(1,len(data))]
-    gains=[max(x,0.0) for x in changes]; losses=[max(-x,0.0) for x in changes]
-    avg_gain=sum(gains[:period])/period; avg_loss=sum(losses[:period])/period; out:list[float|None]=[None]*period+[_rsi_value(avg_gain,avg_loss)]
-    for gain,loss in zip(gains[period:],losses[period:]):
-        avg_gain=((period-1)*avg_gain+gain)/period; avg_loss=((period-1)*avg_loss+loss)/period; out.append(_rsi_value(avg_gain,avg_loss))
-    return tuple(out)
+def ema(values: Sequence[float], span: int) -> AlignedSeries:
+    """EMA seeded with the SMA of the first span observations."""
 
-def _ema_signed(values: Sequence[float],span: int)->AlignedSeries:
-    if len(values)<span: raise InsufficientDataError(f"EMA requires at least {span} observations")
-    alpha=2.0/(span+1); seed=sum(values[:span])/span; out:list[float|None]=[None]*(span-1)+[seed]; previous=seed
-    for value in values[span:]: previous=alpha*value+(1-alpha)*previous; out.append(previous)
-    return tuple(out)
+    if span <= 0:
+        raise ValidationError("span must be positive")
+    data = positive_series(values, minimum=span, name="values")
+    alpha = 2.0 / (span + 1.0)
+    seed = sum(data[:span]) / span
+    output: list[float | None] = [None] * (span - 1) + [seed]
+    previous = seed
+    for value in data[span:]:
+        previous = alpha * value + (1.0 - alpha) * previous
+        output.append(previous)
+    return tuple(output)
 
-def macd(prices: Sequence[float],*,fast_span:int=12,slow_span:int=26,signal_span:int=9)->MACDResult:
-    if not 0<fast_span<slow_span: raise ValidationError("MACD requires 0 < fast_span < slow_span")
-    if signal_span<=0: raise ValidationError("signal_span must be positive")
-    data=positive_series(prices,minimum=slow_span+signal_span-1,name="prices"); fast=ema(data,fast_span); slow=ema(data,slow_span)
-    line:list[float|None]=[]; valid:list[float]=[]; indices:list[int]=[]
-    for i,(a,b) in enumerate(zip(fast,slow)):
-        if a is None or b is None: line.append(None)
-        else: value=a-b; line.append(value); valid.append(value); indices.append(i)
-    sig_valid=_ema_signed(valid,signal_span); sig:list[float|None]=[None]*len(data)
-    for i,value in zip(indices,sig_valid): sig[i]=value
-    hist=tuple(None if a is None or b is None else a-b for a,b in zip(line,sig))
-    return MACDResult(tuple(line),tuple(sig),hist)
 
-def atr(bars: Sequence[OHLCVBar],period:int=14)->AlignedSeries:
-    if period<=0: raise ValidationError("period must be positive")
-    data=chronological_bars(bars,minimum=period); trs=[]; previous=None
+def momentum(prices: Sequence[float], period: int) -> AlignedSeries:
+    """Price momentum as a fractional return over period observations."""
+
+    if period <= 0:
+        raise ValidationError("period must be positive")
+    data = positive_series(prices, minimum=period + 1, name="prices")
+    output: list[float | None] = [None] * period
+    output.extend(
+        data[index] / data[index - period] - 1.0
+        for index in range(period, len(data))
+    )
+    return tuple(output)
+
+
+def rsi(prices: Sequence[float], period: int = 14) -> AlignedSeries:
+    """Wilder RSI on close prices, returning 50 for a flat initial window."""
+
+    if period <= 0:
+        raise ValidationError("period must be positive")
+    data = positive_series(prices, minimum=period + 1, name="prices")
+    changes = [data[index] - data[index - 1] for index in range(1, len(data))]
+    gains = [max(change, 0.0) for change in changes]
+    losses = [max(-change, 0.0) for change in changes]
+
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+    output: list[float | None] = [None] * period
+    output.append(_rsi_from_averages(avg_gain, avg_loss))
+
+    for gain, loss in zip(gains[period:], losses[period:]):
+        avg_gain = ((period - 1) * avg_gain + gain) / period
+        avg_loss = ((period - 1) * avg_loss + loss) / period
+        output.append(_rsi_from_averages(avg_gain, avg_loss))
+    return tuple(output)
+
+
+def _rsi_from_averages(avg_gain: float, avg_loss: float) -> float:
+    if avg_loss == 0.0:
+        return 50.0 if avg_gain == 0.0 else 100.0
+    relative_strength = avg_gain / avg_loss
+    return 100.0 - (100.0 / (1.0 + relative_strength))
+
+
+def macd(
+    prices: Sequence[float],
+    *,
+    fast_span: int = 12,
+    slow_span: int = 26,
+    signal_span: int = 9,
+) -> MACDResult:
+    """MACD, signal, and histogram using SLAIFI's SMA-seeded EMA convention."""
+
+    if not 0 < fast_span < slow_span:
+        raise ValidationError("MACD requires 0 < fast_span < slow_span")
+    if signal_span <= 0:
+        raise ValidationError("signal_span must be positive")
+    data = positive_series(
+        prices,
+        minimum=slow_span + signal_span - 1,
+        name="prices",
+    )
+    fast = ema(data, fast_span)
+    slow = ema(data, slow_span)
+
+    macd_line: list[float | None] = []
+    valid_macd: list[float] = []
+    valid_indices: list[int] = []
+    for index, (fast_value, slow_value) in enumerate(zip(fast, slow)):
+        if fast_value is None or slow_value is None:
+            macd_line.append(None)
+            continue
+        value = fast_value - slow_value
+        macd_line.append(value)
+        valid_macd.append(value)
+        valid_indices.append(index)
+
+    signal_valid = _ema_allow_signed(valid_macd, signal_span)
+    signal_line: list[float | None] = [None] * len(data)
+    for valid_index, signal_value in zip(valid_indices, signal_valid):
+        signal_line[valid_index] = signal_value
+
+    histogram: list[float | None] = []
+    for macd_value, signal_value in zip(macd_line, signal_line):
+        histogram.append(
+            None
+            if macd_value is None or signal_value is None
+            else macd_value - signal_value
+        )
+    return MACDResult(tuple(macd_line), tuple(signal_line), tuple(histogram))
+
+
+def _ema_allow_signed(values: Sequence[float], span: int) -> AlignedSeries:
+    if len(values) < span:
+        raise InsufficientDataError(f"EMA requires at least {span} observations")
+    alpha = 2.0 / (span + 1.0)
+    seed = sum(values[:span]) / span
+    output: list[float | None] = [None] * (span - 1) + [seed]
+    previous = seed
+    for value in values[span:]:
+        previous = alpha * value + (1.0 - alpha) * previous
+        output.append(previous)
+    return tuple(output)
+
+
+def atr(bars: Sequence[OHLCVBar], period: int = 14) -> AlignedSeries:
+    """Wilder Average True Range aligned to the source bars."""
+
+    if period <= 0:
+        raise ValidationError("period must be positive")
+    data = chronological_bars(bars, minimum=period)
+    true_ranges: list[float] = []
+    previous_close: float | None = None
     for bar in data:
-        high=float(bar.high); low=float(bar.low); close=float(bar.close)
-        trs.append(high-low if previous is None else max(high-low,abs(high-previous),abs(low-previous))); previous=close
-    seed=sum(trs[:period])/period; out:list[float|None]=[None]*(period-1)+[seed]; previous_atr=seed
-    for tr in trs[period:]: previous_atr=((period-1)*previous_atr+tr)/period; out.append(previous_atr)
-    return tuple(out)
+        high = float(bar.high)
+        low = float(bar.low)
+        close = float(bar.close)
+        if previous_close is None:
+            true_range = high - low
+        else:
+            true_range = max(
+                high - low,
+                abs(high - previous_close),
+                abs(low - previous_close),
+            )
+        true_ranges.append(true_range)
+        previous_close = close
+
+    seed = sum(true_ranges[:period]) / period
+    output: list[float | None] = [None] * (period - 1) + [seed]
+    previous_atr = seed
+    for true_range in true_ranges[period:]:
+        previous_atr = ((period - 1) * previous_atr + true_range) / period
+        output.append(previous_atr)
+    return tuple(output)

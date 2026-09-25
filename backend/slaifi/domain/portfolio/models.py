@@ -29,6 +29,8 @@ class CashFlowKind(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class Trade:
+    """Executed long-portfolio trade used by the initial accounting engine."""
+
     trade_id: str
     asset: AssetId
     side: TradeSide
@@ -39,16 +41,23 @@ class Trade:
     currency: CurrencyCode
 
     def __post_init__(self) -> None:
-        if not self.trade_id.strip(): raise ValidationError("trade_id must not be empty")
-        if self.quantity <= 0: raise ValidationError("trade quantity must be positive")
-        if self.unit_price <= 0: raise ValidationError("trade unit_price must be positive")
-        if self.fee < 0: raise ValidationError("trade fee must be non-negative")
+        if not self.trade_id.strip():
+            raise ValidationError("trade_id must not be empty")
+        if self.quantity <= 0:
+            raise ValidationError("trade quantity must be positive")
+        if self.unit_price <= 0:
+            raise ValidationError("trade unit_price must be positive")
+        if self.fee < 0:
+            raise ValidationError("trade fee must be non-negative")
         _require_aware(self.occurred_at, "occurred_at")
-        if not isinstance(self.currency, CurrencyCode): object.__setattr__(self, "currency", CurrencyCode(str(self.currency)))
+        if not isinstance(self.currency, CurrencyCode):
+            object.__setattr__(self, "currency", CurrencyCode(str(self.currency)))
 
 
 @dataclass(frozen=True, slots=True)
 class CashFlow:
+    """Non-trade portfolio cash movement."""
+
     flow_id: str
     kind: CashFlowKind
     amount: Decimal
@@ -57,15 +66,21 @@ class CashFlow:
     asset: AssetId | None = None
 
     def __post_init__(self) -> None:
-        if not self.flow_id.strip(): raise ValidationError("flow_id must not be empty")
-        if self.amount <= 0: raise ValidationError("cash-flow amount must be positive")
+        if not self.flow_id.strip():
+            raise ValidationError("flow_id must not be empty")
+        if self.amount <= 0:
+            raise ValidationError("cash-flow amount must be positive")
         _require_aware(self.occurred_at, "occurred_at")
-        if not isinstance(self.currency, CurrencyCode): object.__setattr__(self, "currency", CurrencyCode(str(self.currency)))
-        if self.kind is CashFlowKind.DIVIDEND and self.asset is None: raise ValidationError("dividend cash flows must identify an asset")
+        if not isinstance(self.currency, CurrencyCode):
+            object.__setattr__(self, "currency", CurrencyCode(str(self.currency)))
+        if self.kind is CashFlowKind.DIVIDEND and self.asset is None:
+            raise ValidationError("dividend cash flows must identify an asset")
 
 
 @dataclass(frozen=True, slots=True)
 class Portfolio:
+    """Provider- and persistence-neutral portfolio ledger."""
+
     portfolio_id: str
     name: str
     base_currency: CurrencyCode
@@ -73,13 +88,22 @@ class Portfolio:
     cash_flows: tuple[CashFlow, ...] = ()
 
     def __post_init__(self) -> None:
-        if not self.portfolio_id.strip(): raise ValidationError("portfolio_id must not be empty")
-        if not self.name.strip(): raise ValidationError("portfolio name must not be empty")
-        if not isinstance(self.base_currency, CurrencyCode): object.__setattr__(self, "base_currency", CurrencyCode(str(self.base_currency)))
+        if not self.portfolio_id.strip():
+            raise ValidationError("portfolio_id must not be empty")
+        if not self.name.strip():
+            raise ValidationError("portfolio name must not be empty")
+        if not isinstance(self.base_currency, CurrencyCode):
+            object.__setattr__(
+                self,
+                "base_currency",
+                CurrencyCode(str(self.base_currency)),
+            )
 
 
 @dataclass(frozen=True, slots=True)
 class Position:
+    """Aggregated long position calculated from the trade ledger."""
+
     asset: AssetId
     quantity: Decimal
     average_cost: Decimal
@@ -87,10 +111,14 @@ class Position:
     currency: CurrencyCode
 
     def __post_init__(self) -> None:
-        if self.quantity < 0: raise ValidationError("position quantity cannot be negative")
-        if self.average_cost < 0: raise ValidationError("average_cost cannot be negative")
-        if self.quantity == 0 and self.average_cost != 0: raise ValidationError("closed positions must have zero average_cost")
-        if not isinstance(self.currency, CurrencyCode): object.__setattr__(self, "currency", CurrencyCode(str(self.currency)))
+        if self.quantity < 0:
+            raise ValidationError("position quantity cannot be negative")
+        if self.average_cost < 0:
+            raise ValidationError("average_cost cannot be negative")
+        if self.quantity == 0 and self.average_cost != 0:
+            raise ValidationError("closed positions must have zero average_cost")
+        if not isinstance(self.currency, CurrencyCode):
+            object.__setattr__(self, "currency", CurrencyCode(str(self.currency)))
 
     @property
     def cost_basis(self) -> Decimal:
@@ -99,6 +127,8 @@ class Position:
 
 @dataclass(frozen=True, slots=True)
 class PositionValuation:
+    """Point-in-time valuation for one position."""
+
     position: Position
     market_price: Decimal
     market_value: Decimal
@@ -106,13 +136,18 @@ class PositionValuation:
     portfolio_weight: float | None
 
     def __post_init__(self) -> None:
-        if self.market_price <= 0: raise ValidationError("market_price must be positive")
-        if self.market_value < 0: raise ValidationError("market_value cannot be negative")
-        if self.portfolio_weight is not None and not 0.0 <= self.portfolio_weight <= 1.0: raise ValidationError("portfolio_weight must be in [0, 1]")
+        if self.market_price <= 0:
+            raise ValidationError("market_price must be positive")
+        if self.market_value < 0:
+            raise ValidationError("market_value cannot be negative")
+        if self.portfolio_weight is not None and not 0.0 <= self.portfolio_weight <= 1.0:
+            raise ValidationError("portfolio_weight must be in [0, 1]")
 
 
 @dataclass(frozen=True, slots=True)
 class PortfolioSnapshot:
+    """Calculated portfolio state at a declared point in time."""
+
     portfolio_id: str
     as_of: datetime
     base_currency: CurrencyCode
@@ -123,6 +158,13 @@ class PortfolioSnapshot:
 
     def __post_init__(self) -> None:
         _require_aware(self.as_of, "as_of")
-        if not isinstance(self.base_currency, CurrencyCode): object.__setattr__(self, "base_currency", CurrencyCode(str(self.base_currency)))
-        if self.securities_market_value < 0: raise ValidationError("securities_market_value cannot be negative")
-        if self.total_value != self.cash_balance + self.securities_market_value: raise ValidationError("total_value must equal cash plus securities market value")
+        if not isinstance(self.base_currency, CurrencyCode):
+            object.__setattr__(
+                self,
+                "base_currency",
+                CurrencyCode(str(self.base_currency)),
+            )
+        if self.securities_market_value < 0:
+            raise ValidationError("securities_market_value cannot be negative")
+        if self.total_value != self.cash_balance + self.securities_market_value:
+            raise ValidationError("total_value must equal cash plus securities market value")
