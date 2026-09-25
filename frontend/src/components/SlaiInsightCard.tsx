@@ -8,11 +8,11 @@ type SlaiInsightCardProps = {
   onExplore: () => void;
 };
 
-function runtimeLabel(runtime: SlaiRuntimeStatus | null) {
-  if (!runtime) return "Checking SLAI runtime";
+function runtimeLabel(runtime: SlaiRuntimeStatus | null, statusOverride?: string) {
+  if (!runtime) return "SLAI runtime status unavailable";
   const agent = runtime.agent ? runtime.agent.replace(/_/g, " ") : "Reasoning Agent";
   const version = runtime.agent_version ? ` v${runtime.agent_version}` : "";
-  return `SLAI analysis · ${agent}${version} · ${runtime.status}`;
+  return `SLAI analysis · ${agent}${version} · ${statusOverride ?? runtime.status}`;
 }
 
 export function SlaiInsightCard({ runtime, analysis, loading, error, onExplore }: SlaiInsightCardProps) {
@@ -59,8 +59,12 @@ export function SlaiInsightCard({ runtime, analysis, loading, error, onExplore }
         <span>{loading ? "Reasoning…" : reasoning ? "Refresh the reasoning" : "Explore the reasoning"}</span>
         <span aria-hidden="true">↗</span>
       </button>
-      <div className={`runtime-provenance runtime-provenance--${runtime?.status ?? "unknown"}`}>
-        {reasoning ? runtimeLabel({ ...runtime!, status: reasoning.status }) : connected ? runtimeLabel(runtime) : `Illustrative analysis · SLAI engine ${runtime?.status ?? "not connected"}`}
+      <div className={`runtime-provenance runtime-provenance--${reasoning?.status ?? runtime?.status ?? "unknown"}`}>
+        {reasoning
+          ? runtimeLabel(runtime, reasoning.status)
+          : connected
+            ? runtimeLabel(runtime)
+            : `Illustrative analysis · SLAI engine ${runtime?.status ?? "not connected"}`}
       </div>
     </aside>
   );
