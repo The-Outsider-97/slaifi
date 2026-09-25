@@ -5,5 +5,17 @@ from slaifi.domain.utils.errors import (
     DomainValidationError,
     UnsupportedAssetError,
 )
+from slaifi.domain.utils.helpers import (
+    normalize_identifier,
+    require_aware_datetime,
+    require_non_blank,
+)
 
-__all__ = ["DomainError", "DomainValidationError", "UnsupportedAssetError"]
+__all__ = [
+    "DomainError",
+    "DomainValidationError",
+    "UnsupportedAssetError",
+    "normalize_identifier",
+    "require_aware_datetime",
+    "require_non_blank",
+]

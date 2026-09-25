@@ -7,14 +7,9 @@ from math import isfinite
 
 from slaifi.core.types import CurrencyCode
 from slaifi.domain.assets import AssetClass, AssetId
-from slaifi.domain.utils.errors import DomainValidationError
+from slaifi.domain.utils import DomainValidationError, require_aware_datetime
 
 AssetRef = AssetId
-
-
-def _require_aware(timestamp: datetime, field_name: str) -> None:
-    if timestamp.tzinfo is None or timestamp.utcoffset() is None:
-        raise DomainValidationError(f"{field_name} must be timezone-aware")
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,7 +26,7 @@ class PriceQuote:
     def __post_init__(self) -> None:
         if self.price <= 0:
             raise DomainValidationError("price must be positive")
-        _require_aware(self.observed_at, "observed_at")
+        require_aware_datetime(self.observed_at, name="observed_at")
         if not isinstance(self.currency, CurrencyCode):
             object.__setattr__(self, "currency", CurrencyCode(str(self.currency)))
         source = self.source.strip()
@@ -54,8 +49,8 @@ class OHLCVBar:
     volume: Decimal
 
     def __post_init__(self) -> None:
-        _require_aware(self.start_at, "start_at")
-        _require_aware(self.end_at, "end_at")
+        require_aware_datetime(self.start_at, name="start_at")
+        require_aware_datetime(self.end_at, name="end_at")
         if self.end_at <= self.start_at:
             raise DomainValidationError("end_at must be later than start_at")
         if min(self.open, self.high, self.low, self.close) <= 0:
@@ -76,7 +71,7 @@ class MarketSnapshot:
     quotes: tuple[PriceQuote, ...]
 
     def __post_init__(self) -> None:
-        _require_aware(self.as_of, "as_of")
+        require_aware_datetime(self.as_of, name="as_of")
         seen: set[AssetId] = set()
         for quote in self.quotes:
             if quote.asset in seen:

@@ -7,12 +7,7 @@ from enum import StrEnum
 
 from slaifi.core.types import CurrencyCode
 from slaifi.domain.assets import AssetId
-from slaifi.domain.utils.errors import DomainValidationError
-
-
-def _require_aware(timestamp: datetime, field_name: str) -> None:
-    if timestamp.tzinfo is None or timestamp.utcoffset() is None:
-        raise DomainValidationError(f"{field_name} must be timezone-aware")
+from slaifi.domain.utils import DomainValidationError, require_aware_datetime, require_non_blank
 
 
 class TradeSide(StrEnum):
@@ -41,15 +36,14 @@ class Trade:
     currency: CurrencyCode
 
     def __post_init__(self) -> None:
-        if not self.trade_id.strip():
-            raise DomainValidationError("trade_id must not be empty")
+        require_non_blank(self.trade_id, name="trade_id")
         if self.quantity <= 0:
             raise DomainValidationError("trade quantity must be positive")
         if self.unit_price <= 0:
             raise DomainValidationError("trade unit_price must be positive")
         if self.fee < 0:
             raise DomainValidationError("trade fee must be non-negative")
-        _require_aware(self.occurred_at, "occurred_at")
+        require_aware_datetime(self.occurred_at, name="occurred_at")
         if not isinstance(self.currency, CurrencyCode):
             object.__setattr__(self, "currency", CurrencyCode(str(self.currency)))
 
@@ -66,11 +60,10 @@ class CashFlow:
     asset: AssetId | None = None
 
     def __post_init__(self) -> None:
-        if not self.flow_id.strip():
-            raise DomainValidationError("flow_id must not be empty")
+        require_non_blank(self.flow_id, name="flow_id")
         if self.amount <= 0:
             raise DomainValidationError("cash-flow amount must be positive")
-        _require_aware(self.occurred_at, "occurred_at")
+        require_aware_datetime(self.occurred_at, name="occurred_at")
         if not isinstance(self.currency, CurrencyCode):
             object.__setattr__(self, "currency", CurrencyCode(str(self.currency)))
         if self.kind is CashFlowKind.DIVIDEND and self.asset is None:
@@ -88,16 +81,10 @@ class Portfolio:
     cash_flows: tuple[CashFlow, ...] = ()
 
     def __post_init__(self) -> None:
-        if not self.portfolio_id.strip():
-            raise DomainValidationError("portfolio_id must not be empty")
-        if not self.name.strip():
-            raise DomainValidationError("portfolio name must not be empty")
+        require_non_blank(self.portfolio_id, name="portfolio_id")
+        require_non_blank(self.name, name="portfolio name")
         if not isinstance(self.base_currency, CurrencyCode):
-            object.__setattr__(
-                self,
-                "base_currency",
-                CurrencyCode(str(self.base_currency)),
-            )
+            object.__setattr__(self, "base_currency", CurrencyCode(str(self.base_currency)))
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,13 +144,9 @@ class PortfolioSnapshot:
     total_value: Decimal
 
     def __post_init__(self) -> None:
-        _require_aware(self.as_of, "as_of")
+        require_aware_datetime(self.as_of, name="as_of")
         if not isinstance(self.base_currency, CurrencyCode):
-            object.__setattr__(
-                self,
-                "base_currency",
-                CurrencyCode(str(self.base_currency)),
-            )
+            object.__setattr__(self, "base_currency", CurrencyCode(str(self.base_currency)))
         if self.securities_market_value < 0:
             raise DomainValidationError("securities_market_value cannot be negative")
         if self.total_value != self.cash_balance + self.securities_market_value:

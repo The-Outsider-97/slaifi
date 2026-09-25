@@ -7,7 +7,7 @@ from math import isfinite
 
 from slaifi.domain.assets import AssetId
 from slaifi.domain.predictions import ConfidenceMeasure, UncertaintyMeasure
-from slaifi.domain.utils.errors import DomainValidationError
+from slaifi.domain.utils import DomainValidationError, require_aware_datetime, require_non_blank
 
 
 class RecommendationAction(StrEnum):
@@ -37,8 +37,8 @@ class ModelVersion:
     version: str
 
     def __post_init__(self) -> None:
-        if not self.name.strip() or not self.version.strip():
-            raise DomainValidationError("model name and version must not be empty")
+        require_non_blank(self.name, name="model name")
+        require_non_blank(self.version, name="model version")
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,12 +62,10 @@ class Recommendation:
     model_versions: tuple[ModelVersion, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.generated_at.tzinfo is None or self.generated_at.utcoffset() is None:
-            raise DomainValidationError("generated_at must be timezone-aware")
+        require_aware_datetime(self.generated_at, name="generated_at")
         if self.time_horizon <= timedelta(0):
             raise DomainValidationError("time_horizon must be positive")
-        if not self.target_context.strip():
-            raise DomainValidationError("target_context must not be empty")
+        require_non_blank(self.target_context, name="target_context")
         if self.expected_return_rate is not None and not isfinite(self.expected_return_rate):
             raise DomainValidationError("expected_return_rate must be finite")
         if self.expected_downside_rate is not None and (

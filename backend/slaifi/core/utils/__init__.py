@@ -8,6 +8,7 @@ from slaifi.core.utils.errors import (
     SlaifiError,
     ValidationError,
 )
+from slaifi.core.utils.helpers import is_aware_datetime, to_json_safe
 
 __all__ = [
     "CalculationError",
@@ -16,4 +17,6 @@ __all__ = [
     "IntegrationError",
     "SlaifiError",
     "ValidationError",
+    "is_aware_datetime",
+    "to_json_safe",
 ]
