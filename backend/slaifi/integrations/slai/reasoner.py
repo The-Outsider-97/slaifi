@@ -18,12 +18,18 @@ from slaifi.application.contracts import (
     ReasoningStatus,
     ReasoningUnavailableError,
 )
+from slaifi.core.exceptions import ConfigurationError
 
 logger = logging.getLogger(__name__)
 
 
 class SlaiFinancialReasoner:
-    """Use SLAI AgentFactory + SharedMemory without coupling lower layers to SLAI."""
+    """Use SLAI AgentFactory + SharedMemory without coupling lower layers to SLAI.
+
+    The adapter can either receive host-owned SLAI runtime objects or lazily create
+    its own runtime when ``src`` is importable. Host-owned objects are never closed
+    by SLAIFI.
+    """
 
     def __init__(
         self,
@@ -36,6 +42,10 @@ class SlaiFinancialReasoner:
         factory: Any = None,
         shared_memory: Any = None,
     ) -> None:
+        if (factory is None) != (shared_memory is None):
+            raise ConfigurationError(
+                "slai_factory and slai_shared_memory must be supplied together"
+            )
         self._enabled = enabled
         self._required = required
         self._agent_type = agent_type
@@ -43,6 +53,7 @@ class SlaiFinancialReasoner:
         self._memory_ttl_seconds = memory_ttl_seconds
         self._factory = factory
         self._shared_memory = shared_memory
+        self._owns_runtime = factory is None
         self._agent: Any = None
         self._initialization_error: str | None = None
 
@@ -51,6 +62,8 @@ class SlaiFinancialReasoner:
             return ReasoningResult(
                 status=ReasoningStatus.DISABLED,
                 interpretation=None,
+                correlation_id=request.correlation_id,
+                request_id=request.request_id,
                 warnings=("SLAI integration is disabled by configuration.",),
             )
         if not self._ensure_runtime():
@@ -61,6 +74,8 @@ class SlaiFinancialReasoner:
             return ReasoningResult(
                 status=ReasoningStatus.UNAVAILABLE,
                 interpretation=None,
+                correlation_id=request.correlation_id,
+                request_id=request.request_id,
                 warnings=(self._initialization_error or "SLAI runtime unavailable",),
             )
 
@@ -77,6 +92,7 @@ class SlaiFinancialReasoner:
             "assumptions": _json_safe(request.assumptions),
             "uncertainty": _json_safe(request.uncertainty),
             "correlation_id": correlation_id,
+            "request_id": request.request_id,
         }
         self._memory_set(request_key, envelope)
 
@@ -87,6 +103,8 @@ class SlaiFinancialReasoner:
             "constraints": envelope["constraints"],
             "assumptions": envelope["assumptions"],
             "uncertainty": envelope["uncertainty"],
+            "correlation_id": correlation_id,
+            "request_id": request.request_id,
             "instruction": (
                 "Interpret the supplied SLAIFI evidence. Do not alter, replace, or "
                 "recalculate authoritative numerical evidence. Separate observed or "
@@ -109,6 +127,8 @@ class SlaiFinancialReasoner:
                 agent=self._agent_type,
                 agent_version=_agent_version(self._agent),
                 memory_key=result_key,
+                correlation_id=correlation_id,
+                request_id=request.request_id,
             )
         except Exception as exc:
             logger.exception(
@@ -124,12 +144,17 @@ class SlaiFinancialReasoner:
                 interpretation=None,
                 agent=self._agent_type,
                 agent_version=_agent_version(self._agent),
+                correlation_id=correlation_id,
+                request_id=request.request_id,
                 warnings=(f"SLAI reasoning failed: {type(exc).__name__}: {exc}",),
             )
 
     def status(self) -> ReasoningResult:
         if not self._enabled:
-            return ReasoningResult(status=ReasoningStatus.DISABLED, interpretation=None)
+            return ReasoningResult(
+                status=ReasoningStatus.DISABLED,
+                interpretation=None,
+            )
         if not self._ensure_runtime():
             return ReasoningResult(
                 status=ReasoningStatus.UNAVAILABLE,
@@ -141,8 +166,38 @@ class SlaiFinancialReasoner:
             interpretation=None,
             agent=self._agent_type,
             agent_version=_agent_version(self._agent),
-            raw_result=_runtime_payload(self._agent),
+            raw_result=self._diagnostic_payload(),
         )
+
+    def close(self) -> None:
+        """Release only SLAI resources created and therefore owned by this adapter."""
+
+        if self._owns_runtime and self._factory is not None:
+            release = getattr(self._factory, "release", None)
+            if callable(release):
+                try:
+                    release(self._agent_type)
+                except Exception as exc:
+                    logger.warning(
+                        "Unable to release SLAI agent: %s",
+                        exc,
+                        extra={"component": "slai", "operation": "release"},
+                    )
+        if self._owns_runtime and self._shared_memory is not None:
+            close = getattr(self._shared_memory, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception as exc:
+                    logger.warning(
+                        "Unable to close SLAI shared memory: %s",
+                        exc,
+                        extra={"component": "slai", "operation": "close_memory"},
+                    )
+        self._agent = None
+        if self._owns_runtime:
+            self._factory = None
+            self._shared_memory = None
 
     def _ensure_runtime(self) -> bool:
         if self._agent is not None:
@@ -204,6 +259,44 @@ class SlaiFinancialReasoner:
         if state in {"degraded", "warning"}:
             return ReasoningStatus.DEGRADED
         return ReasoningStatus.AVAILABLE
+
+    def _diagnostic_payload(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {"agent": _runtime_payload(self._agent)}
+        health_check = getattr(self._factory, "health_check", None)
+        if callable(health_check):
+            try:
+                factory_health = health_check()
+            except Exception as exc:
+                payload["factory"] = {
+                    "status": "degraded",
+                    "error_type": type(exc).__name__,
+                }
+            else:
+                if isinstance(factory_health, Mapping):
+                    payload["factory"] = {
+                        "status": factory_health.get("status"),
+                        "health": factory_health.get("health"),
+                        "lifecycle": factory_health.get("lifecycle"),
+                        "registered_agents": factory_health.get("registered_agents"),
+                        "active_agents": factory_health.get("active_agents"),
+                    }
+        memory_health = getattr(self._shared_memory, "health_check", None)
+        if callable(memory_health):
+            try:
+                value = memory_health()
+            except Exception as exc:
+                payload["shared_memory"] = {
+                    "status": "degraded",
+                    "error_type": type(exc).__name__,
+                }
+            else:
+                if isinstance(value, Mapping):
+                    payload["shared_memory"] = {
+                        key: value.get(key)
+                        for key in ("status", "health", "item_count", "closed")
+                        if key in value
+                    }
+        return payload
 
 
 def _runtime_payload(agent: Any) -> dict[str, Any]:
