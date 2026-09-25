@@ -69,7 +69,7 @@ def rsi(prices: Sequence[float], period: int = 14) -> AlignedSeries:
     output: list[float | None] = [None] * period
     output.append(_rsi_from_averages(avg_gain, avg_loss))
 
-    for gain, loss in zip(gains[period:], losses[period:]):
+    for gain, loss in zip(gains[period:], losses[period:], strict=True):
         avg_gain = ((period - 1) * avg_gain + gain) / period
         avg_loss = ((period - 1) * avg_loss + loss) / period
         output.append(_rsi_from_averages(avg_gain, avg_loss))
@@ -107,7 +107,9 @@ def macd(
     macd_line: list[float | None] = []
     valid_macd: list[float] = []
     valid_indices: list[int] = []
-    for index, (fast_value, slow_value) in enumerate(zip(fast, slow)):
+    for index, (fast_value, slow_value) in enumerate(
+        zip(fast, slow, strict=True)
+    ):
         if fast_value is None or slow_value is None:
             macd_line.append(None)
             continue
@@ -118,11 +120,19 @@ def macd(
 
     signal_valid = _ema_allow_signed(valid_macd, signal_span)
     signal_line: list[float | None] = [None] * len(data)
-    for valid_index, signal_value in zip(valid_indices, signal_valid):
+    for valid_index, signal_value in zip(
+        valid_indices,
+        signal_valid,
+        strict=True,
+    ):
         signal_line[valid_index] = signal_value
 
     histogram: list[float | None] = []
-    for macd_value, signal_value in zip(macd_line, signal_line):
+    for macd_value, signal_value in zip(
+        macd_line,
+        signal_line,
+        strict=True,
+    ):
         histogram.append(
             None
             if macd_value is None or signal_value is None

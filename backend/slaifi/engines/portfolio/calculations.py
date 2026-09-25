@@ -20,12 +20,14 @@ from slaifi.domain.portfolio import (
     TradeSide,
 )
 
+_ZERO = Decimal("0")
+
 
 @dataclass(slots=True)
 class _PositionState:
-    quantity: Decimal = Decimal("0")
-    cost_basis: Decimal = Decimal("0")
-    realized_pnl: Decimal = Decimal("0")
+    quantity: Decimal = _ZERO
+    cost_basis: Decimal = _ZERO
+    realized_pnl: Decimal = _ZERO
     currency: CurrencyCode | None = None
 
 
@@ -66,7 +68,7 @@ def build_positions(trades: Sequence[Trade]) -> tuple[Position, ...]:
         state.quantity -= trade.quantity
         state.cost_basis -= average_cost * trade.quantity
         if state.quantity == 0:
-            state.cost_basis = Decimal("0")
+            state.cost_basis = _ZERO
 
     positions: list[Position] = []
     for asset, state in sorted(
@@ -78,7 +80,7 @@ def build_positions(trades: Sequence[Trade]) -> tuple[Position, ...]:
         average_cost = (
             state.cost_basis / state.quantity
             if state.quantity > 0
-            else Decimal("0")
+            else _ZERO
         )
         positions.append(
             Position(
@@ -95,7 +97,7 @@ def build_positions(trades: Sequence[Trade]) -> tuple[Position, ...]:
 def cash_balance(
     portfolio: Portfolio,
     *,
-    initial_cash: Decimal = Decimal("0"),
+    initial_cash: Decimal = _ZERO,
 ) -> Decimal:
     """Calculate base-currency cash without hidden FX conversion."""
 
@@ -122,7 +124,7 @@ def aggregate_income_by_currency(
 ) -> dict[CurrencyCode, Decimal]:
     """Aggregate dividend income without performing FX conversion."""
 
-    totals: dict[CurrencyCode, Decimal] = defaultdict(lambda: Decimal("0"))
+    totals: dict[CurrencyCode, Decimal] = defaultdict(lambda: _ZERO)
     for flow in cash_flows:
         if flow.kind is CashFlowKind.DIVIDEND:
             totals[flow.currency] += flow.amount
@@ -141,7 +143,7 @@ def portfolio_weights(
             continue
         price = _validated_price(position.asset, prices)
         values[position.asset] = position.quantity * price
-    total = sum(values.values(), Decimal("0"))
+    total = sum(values.values(), _ZERO)
     if total == 0:
         return {}
     return {asset: float(value / total) for asset, value in values.items()}
@@ -152,7 +154,7 @@ def value_portfolio(
     prices: Mapping[AssetId, Decimal],
     *,
     as_of: datetime,
-    initial_cash: Decimal = Decimal("0"),
+    initial_cash: Decimal = _ZERO,
 ) -> PortfolioSnapshot:
     """Calculate market value, unrealized P/L, allocation, and cash at as_of."""
 
@@ -167,7 +169,7 @@ def value_portfolio(
             continue
         price = _validated_price(position.asset, prices)
         raw_values[position.asset] = position.quantity * price
-    securities_value = sum(raw_values.values(), Decimal("0"))
+    securities_value = sum(raw_values.values(), _ZERO)
     total_value = balance + securities_value
 
     valuations: list[PositionValuation] = []

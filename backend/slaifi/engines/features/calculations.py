@@ -125,6 +125,6 @@ def volume_changes(volumes: Sequence[float]) -> AlignedSeries:
     if any(value < 0.0 for value in data):
         raise ValidationError("volumes cannot be negative")
     output: list[float | None] = [None]
-    for previous, current in zip(data, data[1:]):
+    for previous, current in zip(data, data[1:], strict=False):
         output.append(None if previous == 0.0 else current / previous - 1.0)
     return tuple(output)

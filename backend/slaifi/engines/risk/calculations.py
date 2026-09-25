@@ -133,7 +133,7 @@ def pearson_correlation(
     mean_y = statistics.mean(y)
     numerator = sum(
         (a - mean_x) * (b - mean_y)
-        for a, b in zip(x, y)
+        for a, b in zip(x, y, strict=True)
     )
     sum_sq_x = sum((a - mean_x) ** 2 for a in x)
     sum_sq_y = sum((b - mean_y) ** 2 for b in y)
@@ -174,7 +174,10 @@ def correlation_matrix(
             row.append(
                 1.0
                 if left == right
-                else pearson_correlation(validated[left], validated[right])
+                else pearson_correlation(
+                    validated[left],
+                    validated[right],
+                )
             )
         rows.append(tuple(row))
     return CorrelationMatrix(labels=labels, values=tuple(rows))
@@ -216,6 +219,7 @@ def calculate_risk_statistics(
         periods_per_year=periods_per_year,
         target_annual_rate=target_annual_rate,
     )
+    sharpe: float | None
     try:
         sharpe = sharpe_ratio(
             data,
@@ -224,6 +228,7 @@ def calculate_risk_statistics(
         )
     except FinancialCalculationError:
         sharpe = None
+    sortino: float | None
     try:
         sortino = sortino_ratio(
             data,
