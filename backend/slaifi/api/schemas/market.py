@@ -10,10 +10,9 @@ from slaifi.domain.market.models import PriceQuote
 
 
 class MarketQuoteResponse(BaseModel):
-    """Serializable normalized quote."""
+    """Serializable normalized quote; change_percent is a presentation value."""
 
     model_config = ConfigDict(frozen=True)
-
     symbol: str
     asset_class: str
     price: Decimal
@@ -24,29 +23,16 @@ class MarketQuoteResponse(BaseModel):
 
     @classmethod
     def from_domain(cls, quote: PriceQuote) -> "MarketQuoteResponse":
-        return cls(
-            symbol=quote.asset.symbol,
-            asset_class=quote.asset.asset_class.value,
-            price=quote.price,
-            currency=quote.currency,
-            change_percent=quote.change_percent,
-            observed_at=quote.observed_at,
-            source=quote.source,
-        )
+        change_percent = None if quote.change_rate is None else Decimal(str(quote.change_rate * 100.0))
+        return cls(symbol=quote.asset.symbol, asset_class=quote.asset.asset_class.value, price=quote.price, currency=quote.currency, change_percent=change_percent, observed_at=quote.observed_at, source=quote.source)
 
 
 class MarketOverviewResponse(BaseModel):
-    """Home dashboard market-overview response."""
-
     model_config = ConfigDict(frozen=True)
-
     generated_at: datetime
     quotes: list[MarketQuoteResponse]
     data_mode: str = "mock"
 
     @classmethod
     def from_domain(cls, overview: MarketOverview) -> "MarketOverviewResponse":
-        return cls(
-            generated_at=overview.generated_at,
-            quotes=[MarketQuoteResponse.from_domain(quote) for quote in overview.quotes],
-        )
+        return cls(generated_at=overview.generated_at, quotes=[MarketQuoteResponse.from_domain(quote) for quote in overview.quotes])
