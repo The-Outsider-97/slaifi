@@ -1,0 +1,45 @@
+:root {
+  --slaifi-white: #eaecec;
+  --slaifi-black: #000000;
+  --slaifi-accent: #e1c838;
+  --slaifi-graphite: #353535;
+
+  --bg: var(--slaifi-black);
+  --surface: #0c0c0c;
+  --surface-elevated: #151515;
+  --text: var(--slaifi-white);
+  --text-secondary: rgba(234, 236, 236, 0.72);
+  --text-muted: rgba(234, 236, 236, 0.48);
+  --border: rgba(234, 236, 236, 0.14);
+  --header: rgba(0, 0, 0, 0.88);
+  --positive: #68d391;
+  --negative: #ff7878;
+  --warning: #f4c95d;
+  --info: #75bfff;
+  --chart-1: #e1c838;
+  --chart-2: #75bfff;
+  --chart-3: #68d391;
+  --chart-4: #c38cff;
+  --shadow: rgba(0, 0, 0, 0.32);
+  --content-width: 1320px;
+  --font-sans: "Segoe UI", Inter, Arial, Helvetica, sans-serif;
+  --font-mono: "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
+  color-scheme: dark;
+}
+
+html[data-theme="light"] {
+  --bg: var(--slaifi-white);
+  --surface: #f5f6f5;
+  --surface-elevated: #ffffff;
+  --text: var(--slaifi-black);
+  --text-secondary: rgba(0, 0, 0, 0.68);
+  --text-muted: rgba(0, 0, 0, 0.48);
+  --border: rgba(0, 0, 0, 0.14);
+  --header: rgba(234, 236, 236, 0.9);
+  --positive: #117a45;
+  --negative: #b42318;
+  --warning: #8a6200;
+  --info: #1261a0;
+  --shadow: rgba(0, 0, 0, 0.12);
+  color-scheme: light;
+}

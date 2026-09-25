@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main, architecture-foundation]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install backend
+        run: python -m pip install -e ".[dev]"
+      - name: Ruff
+        run: ruff check backend tests
+      - name: Mypy
+        run: mypy backend
+      - name: Tests
+        run: pytest
+      - name: Import and startup smoke test
+        run: |
+          python - <<'PY'
+          from fastapi.testclient import TestClient
+          from slaifi.main import app
+          with TestClient(app) as client:
+              assert client.get('/health').json() == {'status': 'ok'}
+              assert client.get('/api/v1/market/overview').status_code == 200
+          PY
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend
+        working-directory: frontend
+        run: npm install
+      - name: Typecheck
+        working-directory: frontend
+        run: npm run typecheck
+      - name: Build
+        working-directory: frontend
+        run: npm run build
