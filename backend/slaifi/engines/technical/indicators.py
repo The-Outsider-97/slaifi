@@ -3,10 +3,10 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from slaifi.core.exceptions import InsufficientDataError, ValidationError
 from slaifi.domain.market import OHLCVBar
 from slaifi.engines._validation import chronological_bars, positive_series
 from slaifi.engines.features import rolling_mean
+from slaifi.engines.utils.errors import EngineValidationError, InsufficientDataError
 
 AlignedSeries = tuple[float | None, ...]
 
@@ -28,7 +28,7 @@ def ema(values: Sequence[float], span: int) -> AlignedSeries:
     """EMA seeded with the SMA of the first span observations."""
 
     if span <= 0:
-        raise ValidationError("span must be positive")
+        raise EngineValidationError("span must be positive")
     data = positive_series(values, minimum=span, name="values")
     alpha = 2.0 / (span + 1.0)
     seed = sum(data[:span]) / span
@@ -44,7 +44,7 @@ def momentum(prices: Sequence[float], period: int) -> AlignedSeries:
     """Price momentum as a fractional return over period observations."""
 
     if period <= 0:
-        raise ValidationError("period must be positive")
+        raise EngineValidationError("period must be positive")
     data = positive_series(prices, minimum=period + 1, name="prices")
     output: list[float | None] = [None] * period
     output.extend(
@@ -58,7 +58,7 @@ def rsi(prices: Sequence[float], period: int = 14) -> AlignedSeries:
     """Wilder RSI on close prices, returning 50 for a flat initial window."""
 
     if period <= 0:
-        raise ValidationError("period must be positive")
+        raise EngineValidationError("period must be positive")
     data = positive_series(prices, minimum=period + 1, name="prices")
     changes = [data[index] - data[index - 1] for index in range(1, len(data))]
     gains = [max(change, 0.0) for change in changes]
@@ -93,9 +93,9 @@ def macd(
     """MACD, signal, and histogram using SLAIFI's SMA-seeded EMA convention."""
 
     if not 0 < fast_span < slow_span:
-        raise ValidationError("MACD requires 0 < fast_span < slow_span")
+        raise EngineValidationError("MACD requires 0 < fast_span < slow_span")
     if signal_span <= 0:
-        raise ValidationError("signal_span must be positive")
+        raise EngineValidationError("signal_span must be positive")
     data = positive_series(
         prices,
         minimum=slow_span + signal_span - 1,
@@ -158,7 +158,7 @@ def atr(bars: Sequence[OHLCVBar], period: int = 14) -> AlignedSeries:
     """Wilder Average True Range aligned to the source bars."""
 
     if period <= 0:
-        raise ValidationError("period must be positive")
+        raise EngineValidationError("period must be positive")
     data = chronological_bars(bars, minimum=period)
     true_ranges: list[float] = []
     previous_close: float | None = None

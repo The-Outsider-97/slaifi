@@ -4,10 +4,10 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Mapping, Protocol
 
-from slaifi.core.exceptions import SlaifiError
+from slaifi.core.utils.errors import IntegrationError
 
 
-class ReasoningUnavailableError(SlaifiError):
+class ReasoningUnavailableError(IntegrationError):
     """Configured contextual reasoning is required but currently unavailable."""
 
 

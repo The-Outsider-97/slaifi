@@ -5,14 +5,14 @@ from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 
-from slaifi.core.exceptions import ValidationError
 from slaifi.core.types import CurrencyCode
 from slaifi.domain.assets import AssetId
+from slaifi.domain.utils.errors import DomainValidationError
 
 
 def _require_aware(timestamp: datetime, field_name: str) -> None:
     if timestamp.tzinfo is None or timestamp.utcoffset() is None:
-        raise ValidationError(f"{field_name} must be timezone-aware")
+        raise DomainValidationError(f"{field_name} must be timezone-aware")
 
 
 class TradeSide(StrEnum):
@@ -42,13 +42,13 @@ class Trade:
 
     def __post_init__(self) -> None:
         if not self.trade_id.strip():
-            raise ValidationError("trade_id must not be empty")
+            raise DomainValidationError("trade_id must not be empty")
         if self.quantity <= 0:
-            raise ValidationError("trade quantity must be positive")
+            raise DomainValidationError("trade quantity must be positive")
         if self.unit_price <= 0:
-            raise ValidationError("trade unit_price must be positive")
+            raise DomainValidationError("trade unit_price must be positive")
         if self.fee < 0:
-            raise ValidationError("trade fee must be non-negative")
+            raise DomainValidationError("trade fee must be non-negative")
         _require_aware(self.occurred_at, "occurred_at")
         if not isinstance(self.currency, CurrencyCode):
             object.__setattr__(self, "currency", CurrencyCode(str(self.currency)))
@@ -67,14 +67,14 @@ class CashFlow:
 
     def __post_init__(self) -> None:
         if not self.flow_id.strip():
-            raise ValidationError("flow_id must not be empty")
+            raise DomainValidationError("flow_id must not be empty")
         if self.amount <= 0:
-            raise ValidationError("cash-flow amount must be positive")
+            raise DomainValidationError("cash-flow amount must be positive")
         _require_aware(self.occurred_at, "occurred_at")
         if not isinstance(self.currency, CurrencyCode):
             object.__setattr__(self, "currency", CurrencyCode(str(self.currency)))
         if self.kind is CashFlowKind.DIVIDEND and self.asset is None:
-            raise ValidationError("dividend cash flows must identify an asset")
+            raise DomainValidationError("dividend cash flows must identify an asset")
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,9 +89,9 @@ class Portfolio:
 
     def __post_init__(self) -> None:
         if not self.portfolio_id.strip():
-            raise ValidationError("portfolio_id must not be empty")
+            raise DomainValidationError("portfolio_id must not be empty")
         if not self.name.strip():
-            raise ValidationError("portfolio name must not be empty")
+            raise DomainValidationError("portfolio name must not be empty")
         if not isinstance(self.base_currency, CurrencyCode):
             object.__setattr__(
                 self,
@@ -112,11 +112,11 @@ class Position:
 
     def __post_init__(self) -> None:
         if self.quantity < 0:
-            raise ValidationError("position quantity cannot be negative")
+            raise DomainValidationError("position quantity cannot be negative")
         if self.average_cost < 0:
-            raise ValidationError("average_cost cannot be negative")
+            raise DomainValidationError("average_cost cannot be negative")
         if self.quantity == 0 and self.average_cost != 0:
-            raise ValidationError("closed positions must have zero average_cost")
+            raise DomainValidationError("closed positions must have zero average_cost")
         if not isinstance(self.currency, CurrencyCode):
             object.__setattr__(self, "currency", CurrencyCode(str(self.currency)))
 
@@ -137,11 +137,11 @@ class PositionValuation:
 
     def __post_init__(self) -> None:
         if self.market_price <= 0:
-            raise ValidationError("market_price must be positive")
+            raise DomainValidationError("market_price must be positive")
         if self.market_value < 0:
-            raise ValidationError("market_value cannot be negative")
+            raise DomainValidationError("market_value cannot be negative")
         if self.portfolio_weight is not None and not 0.0 <= self.portfolio_weight <= 1.0:
-            raise ValidationError("portfolio_weight must be in [0, 1]")
+            raise DomainValidationError("portfolio_weight must be in [0, 1]")
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,6 +165,6 @@ class PortfolioSnapshot:
                 CurrencyCode(str(self.base_currency)),
             )
         if self.securities_market_value < 0:
-            raise ValidationError("securities_market_value cannot be negative")
+            raise DomainValidationError("securities_market_value cannot be negative")
         if self.total_value != self.cash_balance + self.securities_market_value:
-            raise ValidationError("total_value must equal cash plus securities market value")
+            raise DomainValidationError("total_value must equal cash plus securities market value")

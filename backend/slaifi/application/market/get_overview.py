@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from slaifi.core.utils.errors import ValidationError
 from slaifi.domain.market.models import AssetRef, PriceQuote
 from slaifi.domain.market.provider import MarketDataProvider
 
@@ -20,7 +21,7 @@ class GetMarketOverview:
 
     def __init__(self, provider: MarketDataProvider, assets: tuple[AssetRef, ...]) -> None:
         if not assets:
-            raise ValueError("market overview requires at least one asset")
+            raise ValidationError("market overview requires at least one asset")
         self._provider = provider
         self._assets = assets
 

@@ -4,9 +4,9 @@ import math
 import statistics
 from collections.abc import Mapping, Sequence
 
-from slaifi.core.exceptions import FinancialCalculationError, ValidationError
 from slaifi.domain.risk import CorrelationMatrix, RiskStatistics
 from slaifi.engines._validation import finite_series, positive_series
+from slaifi.engines.utils.errors import EngineValidationError, FinancialCalculationError
 
 
 def periodic_rate_from_annual(
@@ -16,9 +16,9 @@ def periodic_rate_from_annual(
     """Convert an annual compound rate to an equivalent periodic rate."""
 
     if periods_per_year <= 0:
-        raise ValidationError("periods_per_year must be positive")
+        raise EngineValidationError("periods_per_year must be positive")
     if not math.isfinite(annual_rate) or annual_rate <= -1.0:
-        raise ValidationError("annual_rate must be finite and greater than -1")
+        raise EngineValidationError("annual_rate must be finite and greater than -1")
     return (1.0 + annual_rate) ** (1.0 / periods_per_year) - 1.0
 
 
@@ -31,7 +31,7 @@ def historical_volatility(
 
     data = finite_series(returns, minimum=2, name="returns")
     if periods_per_year <= 0:
-        raise ValidationError("periods_per_year must be positive")
+        raise EngineValidationError("periods_per_year must be positive")
     return statistics.stdev(data) * math.sqrt(periods_per_year)
 
 
@@ -126,7 +126,7 @@ def pearson_correlation(
     """Sample Pearson correlation for equal-length finite series."""
 
     if len(left) != len(right):
-        raise ValidationError("correlation series must have equal length")
+        raise EngineValidationError("correlation series must have equal length")
     x = finite_series(left, minimum=2, name="left correlation series")
     y = finite_series(right, minimum=2, name="right correlation series")
     mean_x = statistics.mean(x)
@@ -153,10 +153,10 @@ def correlation_matrix(
 
     labels = tuple(series.keys())
     if not labels:
-        raise ValidationError("correlation matrix requires at least one series")
+        raise EngineValidationError("correlation matrix requires at least one series")
     lengths = {len(series[label]) for label in labels}
     if len(lengths) != 1:
-        raise ValidationError("all correlation series must have equal length")
+        raise EngineValidationError("all correlation series must have equal length")
     validated = {
         label: finite_series(series[label], minimum=2, name=label)
         for label in labels
@@ -188,7 +188,7 @@ def concentration_hhi(weights: Sequence[float]) -> float:
 
     data = finite_series(weights, minimum=1, name="weights")
     if any(weight < 0.0 for weight in data):
-        raise ValidationError("concentration weights cannot be negative")
+        raise EngineValidationError("concentration weights cannot be negative")
     total = sum(data)
     if total <= 0.0:
         raise FinancialCalculationError(

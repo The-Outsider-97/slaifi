@@ -18,7 +18,7 @@ from slaifi.application.contracts import (
     ReasoningStatus,
     ReasoningUnavailableError,
 )
-from slaifi.core.exceptions import ConfigurationError
+from slaifi.core.utils.errors import ConfigurationError
 
 logger = logging.getLogger(__name__)
 

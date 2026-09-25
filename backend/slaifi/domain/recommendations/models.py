@@ -5,9 +5,9 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 from math import isfinite
 
-from slaifi.core.exceptions import ValidationError
 from slaifi.domain.assets import AssetId
 from slaifi.domain.predictions import ConfidenceMeasure, UncertaintyMeasure
+from slaifi.domain.utils.errors import DomainValidationError
 
 
 class RecommendationAction(StrEnum):
@@ -38,7 +38,7 @@ class ModelVersion:
 
     def __post_init__(self) -> None:
         if not self.name.strip() or not self.version.strip():
-            raise ValidationError("model name and version must not be empty")
+            raise DomainValidationError("model name and version must not be empty")
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,16 +63,16 @@ class Recommendation:
 
     def __post_init__(self) -> None:
         if self.generated_at.tzinfo is None or self.generated_at.utcoffset() is None:
-            raise ValidationError("generated_at must be timezone-aware")
+            raise DomainValidationError("generated_at must be timezone-aware")
         if self.time_horizon <= timedelta(0):
-            raise ValidationError("time_horizon must be positive")
+            raise DomainValidationError("time_horizon must be positive")
         if not self.target_context.strip():
-            raise ValidationError("target_context must not be empty")
+            raise DomainValidationError("target_context must not be empty")
         if self.expected_return_rate is not None and not isfinite(self.expected_return_rate):
-            raise ValidationError("expected_return_rate must be finite")
+            raise DomainValidationError("expected_return_rate must be finite")
         if self.expected_downside_rate is not None and (
             not isfinite(self.expected_downside_rate) or self.expected_downside_rate < 0.0
         ):
-            raise ValidationError(
+            raise DomainValidationError(
                 "expected_downside_rate is a non-negative downside magnitude"
             )

@@ -4,8 +4,8 @@ import math
 import statistics
 from collections.abc import Sequence
 
-from slaifi.core.exceptions import ValidationError
 from slaifi.engines._validation import finite_series, positive_series
+from slaifi.engines.utils.errors import EngineValidationError
 
 AlignedSeries = tuple[float | None, ...]
 
@@ -38,7 +38,7 @@ def rolling_returns(prices: Sequence[float], window: int) -> AlignedSeries:
     """Return price[t] / price[t-window] - 1 with warm-up None values."""
 
     if window <= 0:
-        raise ValidationError("window must be positive")
+        raise EngineValidationError("window must be positive")
     values = positive_series(prices, minimum=window + 1, name="prices")
     result: list[float | None] = [None] * window
     result.extend(
@@ -52,7 +52,7 @@ def rolling_mean(values: Sequence[float], window: int) -> AlignedSeries:
     """Simple rolling arithmetic mean with right-edge alignment."""
 
     if window <= 0:
-        raise ValidationError("window must be positive")
+        raise EngineValidationError("window must be positive")
     data = finite_series(values, minimum=window, name="values")
     result: list[float | None] = [None] * (window - 1)
     running = sum(data[:window])
@@ -67,7 +67,7 @@ def rolling_max(values: Sequence[float], window: int) -> AlignedSeries:
     """Rolling maximum with explicit warm-up values."""
 
     if window <= 0:
-        raise ValidationError("window must be positive")
+        raise EngineValidationError("window must be positive")
     data = finite_series(values, minimum=window, name="values")
     result: list[float | None] = [None] * (window - 1)
     result.extend(
@@ -86,9 +86,9 @@ def rolling_volatility(
     """Sample volatility over a rolling return window."""
 
     if window < 2:
-        raise ValidationError("rolling volatility window must be at least 2")
+        raise EngineValidationError("rolling volatility window must be at least 2")
     if periods_per_year is not None and periods_per_year <= 0:
-        raise ValidationError("periods_per_year must be positive")
+        raise EngineValidationError("periods_per_year must be positive")
     prices_tuple = positive_series(
         prices,
         minimum=window + 1,
@@ -123,7 +123,7 @@ def volume_changes(volumes: Sequence[float]) -> AlignedSeries:
 
     data = finite_series(volumes, minimum=2, name="volumes")
     if any(value < 0.0 for value in data):
-        raise ValidationError("volumes cannot be negative")
+        raise EngineValidationError("volumes cannot be negative")
     output: list[float | None] = [None]
     for previous, current in zip(data, data[1:], strict=False):
         output.append(None if previous == 0.0 else current / previous - 1.0)

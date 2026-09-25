@@ -7,7 +7,7 @@ from decimal import Decimal
 from slaifi.application.contracts import FinancialReasoner, ReasoningRequest
 from slaifi.application.goals import evaluate_goal_bundle
 from slaifi.application.models import PortfolioAnalysisResult
-from slaifi.core.exceptions import ValidationError
+from slaifi.core.utils.errors import ValidationError
 from slaifi.domain.assets import AssetId
 from slaifi.domain.goals import FinancialGoal
 from slaifi.domain.portfolio import Portfolio
