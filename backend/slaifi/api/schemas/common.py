@@ -65,6 +65,11 @@ class ReasoningResponse(BaseModel):
     agent_version: str | None
     correlation_id: str | None
     request_id: str | None
+    reasoning_strategy: str | None
+    confidence: float | None
+    outcome: str | None
+    degraded: bool
+    validation_status: str | None
     warnings: list[str]
 
     @classmethod
@@ -76,5 +81,10 @@ class ReasoningResponse(BaseModel):
             agent_version=result.agent_version,
             correlation_id=result.correlation_id,
             request_id=result.request_id,
+            reasoning_strategy=result.reasoning_strategy,
+            confidence=result.confidence,
+            outcome=result.outcome,
+            degraded=result.degraded,
+            validation_status=result.validation_status,
             warnings=list(result.warnings),
         )
