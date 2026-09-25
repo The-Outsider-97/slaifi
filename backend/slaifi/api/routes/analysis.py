@@ -1,5 +1,6 @@
 """Financial-analysis HTTP routes."""
 
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -18,6 +19,7 @@ from slaifi.api.schemas.analysis import (
 from slaifi.application.analysis import AnalyzeMarketSeries, AnalyzePortfolio
 from slaifi.core.config import Settings
 from slaifi.core.exceptions import ValidationError
+from slaifi.domain.assets import AssetId
 
 router = APIRouter(prefix="/api/v1/analysis", tags=["analysis"])
 
@@ -63,7 +65,7 @@ def analyze_portfolio(
             ),
         )
     portfolio = payload.portfolio.to_domain()
-    prices = {}
+    prices: dict[AssetId, Decimal] = {}
     for item in payload.prices:
         asset = item.asset.to_domain()
         if asset in prices:
