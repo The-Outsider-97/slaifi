@@ -1,8 +1,4 @@
-"""Compatibility imports for Core-owned SLAIFI errors.
-
-New code should import from ``slaifi.core.utils.errors``. This module contains no
-error definitions and intentionally does not re-export Domain or Engine errors.
-"""
+"""Lowest-level cross-cutting SLAIFI utilities."""
 
 from slaifi.core.utils.errors import (
     CalculationError,
@@ -12,6 +8,7 @@ from slaifi.core.utils.errors import (
     SlaifiError,
     ValidationError,
 )
+from slaifi.core.utils.helpers import is_aware_datetime, to_json_safe
 
 __all__ = [
     "CalculationError",
@@ -20,4 +17,6 @@ __all__ = [
     "IntegrationError",
     "SlaifiError",
     "ValidationError",
+    "is_aware_datetime",
+    "to_json_safe",
 ]

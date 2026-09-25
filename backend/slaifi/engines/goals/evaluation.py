@@ -3,7 +3,6 @@
 from decimal import Decimal
 from math import isfinite
 
-from slaifi.core.exceptions import ValidationError
 from slaifi.domain.goals import (
     FeasibilityStatus,
     IncomeGoalEvaluation,
@@ -12,6 +11,7 @@ from slaifi.domain.goals import (
     ReturnGoalEvaluation,
     ReturnTarget,
 )
+from slaifi.engines.utils.errors import EngineValidationError
 
 _PERIODS_PER_YEAR = {
     IncomePeriod.WEEKLY: Decimal("52"),
@@ -37,19 +37,19 @@ def evaluate_income_goal(
     """Evaluate income arithmetic under explicitly supplied assumptions."""
 
     if available_capital < 0:
-        raise ValidationError("available_capital cannot be negative")
+        raise EngineValidationError("available_capital cannot be negative")
     if (
         current_expected_annual_income is not None
         and current_expected_annual_income < 0
     ):
-        raise ValidationError(
+        raise EngineValidationError(
             "current_expected_annual_income cannot be negative"
         )
     if assumed_annual_yield_rate is not None and (
         not isfinite(assumed_annual_yield_rate)
         or assumed_annual_yield_rate < 0.0
     ):
-        raise ValidationError(
+        raise EngineValidationError(
             "assumed_annual_yield_rate must be finite and non-negative"
         )
 
@@ -115,7 +115,7 @@ def evaluate_return_goal(
         not isfinite(assumed_annual_return_rate)
         or assumed_annual_return_rate <= -1.0
     ):
-        raise ValidationError(
+        raise EngineValidationError(
             "assumed_annual_return_rate must be finite and greater than -1"
         )
     gap = assumed_annual_return_rate - target.annual_rate

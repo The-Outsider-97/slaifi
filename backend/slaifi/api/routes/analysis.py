@@ -19,7 +19,7 @@ from slaifi.api.schemas.analysis import (
 )
 from slaifi.application.analysis import AnalyzeMarketSeries, AnalyzePortfolio
 from slaifi.core.config import Settings
-from slaifi.core.exceptions import ValidationError
+from slaifi.core.utils.errors import ValidationError
 from slaifi.domain.assets import AssetId
 
 router = APIRouter(prefix="/api/v1/analysis", tags=["analysis"])

@@ -9,7 +9,7 @@ from slaifi.application.contracts import FinancialReasoner
 from slaifi.application.goals import EvaluateFinancialGoal
 from slaifi.application.market.get_overview import GetMarketOverview
 from slaifi.core.config import Settings
-from slaifi.core.exceptions import ValidationError
+from slaifi.core.utils.errors import ValidationError
 
 
 def _state_value(request: Request, name: str) -> object:

@@ -1,10 +1,19 @@
-"""Shared lower-layer validation helpers for numerical engines."""
+"""Reusable validation helpers for deterministic quantitative engines."""
 
 from collections.abc import Sequence
 from math import isfinite
 
-from slaifi.core.exceptions import InsufficientDataError, ValidationError
 from slaifi.domain.market import OHLCVBar
+from slaifi.engines.utils.errors import EngineValidationError, InsufficientDataError
+
+
+def require_positive_integer(value: int, *, name: str, minimum: int = 1) -> int:
+    """Require an integer at or above an explicit positive minimum."""
+
+    if value < minimum:
+        qualifier = "positive" if minimum == 1 else f"at least {minimum}"
+        raise EngineValidationError(f"{name} must be {qualifier}")
+    return value
 
 
 def finite_series(
@@ -16,12 +25,10 @@ def finite_series(
     """Validate a finite numeric series without inventing missing values."""
 
     if len(values) < minimum:
-        raise InsufficientDataError(
-            f"{name} requires at least {minimum} observations"
-        )
+        raise InsufficientDataError(f"{name} requires at least {minimum} observations")
     normalized = tuple(float(value) for value in values)
     if not all(isfinite(value) for value in normalized):
-        raise ValidationError(f"{name} contains NaN or infinity")
+        raise EngineValidationError(f"{name} contains NaN or infinity")
     return normalized
 
 
@@ -35,7 +42,7 @@ def positive_series(
 
     normalized = finite_series(values, minimum=minimum, name=name)
     if any(value <= 0.0 for value in normalized):
-        raise ValidationError(f"{name} must contain only positive values")
+        raise EngineValidationError(f"{name} must contain only positive values")
     return normalized
 
 
@@ -47,14 +54,12 @@ def chronological_bars(
     """Require strictly chronological bars with unique end timestamps."""
 
     if len(bars) < minimum:
-        raise InsufficientDataError(
-            f"bar series requires at least {minimum} observations"
-        )
+        raise InsufficientDataError(f"bar series requires at least {minimum} observations")
     normalized = tuple(bars)
     previous_end = None
     for bar in normalized:
         if previous_end is not None and bar.end_at <= previous_end:
-            raise ValidationError(
+            raise EngineValidationError(
                 "bars must be strictly ordered with unique end timestamps"
             )
         previous_end = bar.end_at

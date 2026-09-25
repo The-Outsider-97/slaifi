@@ -5,8 +5,8 @@ from decimal import Decimal
 from enum import StrEnum
 from math import isfinite
 
-from slaifi.core.exceptions import ValidationError
 from slaifi.domain.assets import AssetClass
+from slaifi.domain.utils.errors import DomainValidationError
 
 
 class IncomePeriod(StrEnum):
@@ -30,7 +30,7 @@ class ReturnTarget:
 
     def __post_init__(self) -> None:
         if not isfinite(self.annual_rate) or self.annual_rate <= -1.0:
-            raise ValidationError("annual return target must be finite and greater than -1")
+            raise DomainValidationError("annual return target must be finite and greater than -1")
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,7 +42,7 @@ class IncomeTarget:
 
     def __post_init__(self) -> None:
         if self.amount <= 0:
-            raise ValidationError("income target amount must be positive")
+            raise DomainValidationError("income target amount must be positive")
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,18 +67,18 @@ class RiskConstraints:
             if value is not None and (
                 not isfinite(value) or not 0.0 <= value <= 1.0
             ):
-                raise ValidationError(f"{name} must be a finite rate in [0, 1]")
+                raise DomainValidationError(f"{name} must be a finite rate in [0, 1]")
         if self.max_leverage is not None and (
             not isfinite(self.max_leverage) or self.max_leverage < 0.0
         ):
-            raise ValidationError("max_leverage must be finite and non-negative")
+            raise DomainValidationError("max_leverage must be finite and non-negative")
         if self.max_short_exposure is not None and (
             not isfinite(self.max_short_exposure) or self.max_short_exposure < 0.0
         ):
-            raise ValidationError("max_short_exposure must be finite and non-negative")
+            raise DomainValidationError("max_short_exposure must be finite and non-negative")
         overlap = self.allowed_asset_classes & self.prohibited_asset_classes
         if overlap:
-            raise ValidationError("asset classes cannot be both allowed and prohibited")
+            raise DomainValidationError("asset classes cannot be both allowed and prohibited")
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,9 +92,9 @@ class GoalPreferences:
 
     def __post_init__(self) -> None:
         if self.dca_amount is not None and self.dca_amount < 0:
-            raise ValidationError("dca_amount cannot be negative")
+            raise DomainValidationError("dca_amount cannot be negative")
         if self.cash_reserve is not None and self.cash_reserve < 0:
-            raise ValidationError("cash_reserve cannot be negative")
+            raise DomainValidationError("cash_reserve cannot be negative")
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,7 +109,7 @@ class FinancialGoal:
 
     def __post_init__(self) -> None:
         if not self.goal_id.strip():
-            raise ValidationError("goal_id must not be empty")
+            raise DomainValidationError("goal_id must not be empty")
 
 
 @dataclass(frozen=True, slots=True)

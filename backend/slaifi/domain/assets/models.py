@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
-from slaifi.core.exceptions import ValidationError
 from slaifi.core.types import CurrencyCode
+from slaifi.domain.utils import normalize_identifier
 
 
 class AssetClass(StrEnum):
@@ -31,22 +31,25 @@ class AssetId:
     instrument_id: str | None = None
 
     def __post_init__(self) -> None:
-        symbol = self.symbol.strip().upper()
-        if not symbol:
-            raise ValidationError("asset symbol must not be empty")
-        object.__setattr__(self, "symbol", symbol)
+        object.__setattr__(
+            self,
+            "symbol",
+            normalize_identifier(self.symbol, name="asset symbol", uppercase=True),
+        )
         if self.exchange is not None:
-            exchange = self.exchange.strip().upper()
-            if not exchange:
-                raise ValidationError("exchange must not be blank when supplied")
-            object.__setattr__(self, "exchange", exchange)
+            object.__setattr__(
+                self,
+                "exchange",
+                normalize_identifier(self.exchange, name="exchange", uppercase=True),
+            )
         if self.currency is not None and not isinstance(self.currency, CurrencyCode):
             object.__setattr__(self, "currency", CurrencyCode(str(self.currency)))
         if self.instrument_id is not None:
-            instrument_id = self.instrument_id.strip()
-            if not instrument_id:
-                raise ValidationError("instrument_id must not be blank when supplied")
-            object.__setattr__(self, "instrument_id", instrument_id)
+            object.__setattr__(
+                self,
+                "instrument_id",
+                normalize_identifier(self.instrument_id, name="instrument_id"),
+            )
 
     @property
     def display_symbol(self) -> str:

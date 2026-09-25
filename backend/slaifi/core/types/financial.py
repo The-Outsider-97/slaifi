@@ -2,7 +2,7 @@
 
 from math import isfinite
 
-from slaifi.core.exceptions import ValidationError
+from slaifi.core.utils.errors import ValidationError
 
 
 class CurrencyCode(str):

@@ -4,8 +4,12 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from logs.logger import get_logger
+
 from slaifi.core.types import CurrencyCode
 from slaifi.domain.market.models import AssetRef, PriceQuote
+
+logger = get_logger("SLAIFI Mock Market Data")
 
 
 class MockMarketDataProvider:
@@ -20,10 +24,12 @@ class MockMarketDataProvider:
     async def get_quotes(self, assets: Sequence[AssetRef]) -> Sequence[PriceQuote]:
         observed_at = datetime.now(UTC)
         raw_payload = [self._raw_quote(asset, observed_at) for asset in assets]
-        return [
+        quotes = [
             self._normalize(item, asset)
             for item, asset in zip(raw_payload, assets, strict=True)
         ]
+        logger.debug("Generated %d deterministic mock quote(s)", len(quotes))
+        return quotes
 
     def _raw_quote(
         self,
@@ -44,9 +50,7 @@ class MockMarketDataProvider:
         return PriceQuote(
             asset=asset,
             price=Decimal(payload["last"]),
-            change_rate=float(
-                Decimal(payload["pct_change"]) / Decimal("100")
-            ),
+            change_rate=float(Decimal(payload["pct_change"]) / Decimal("100")),
             currency=CurrencyCode(payload["currency_code"]),
             observed_at=datetime.fromisoformat(payload["captured_at"]),
             source="mock",

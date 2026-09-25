@@ -1,8 +1,6 @@
 # Dependency Rules
 
-The dependency rules are executable in `tests/architecture/test_dependency_rules.py`.
-
-## Allowed package dependencies
+The rules are executable in `tests/architecture/`.
 
 | Package | May depend on SLAIFI packages |
 | --- | --- |
@@ -11,28 +9,19 @@ The dependency rules are executable in `tests/architecture/test_dependency_rules
 | `engines` | `core`, `domain` |
 | `application` | `core`, `domain`, `engines` |
 | `infrastructure` | `core`, `domain` |
-| `integrations` | `core`, `domain` |
+| `integrations` | `core`, `domain`, **Application contracts only** |
 | `api` | `core`, `domain`, `application` |
-| `main` | all packages required for composition |
+| `main` | composition-root dependencies as required |
 
-`main.py` is deliberately excluded from the layered graph because a composition root must know both abstractions and concrete implementations.
+Additional rules:
 
-## Explicit prohibitions
-
-- `core` must not import any other SLAIFI package.
-- `domain` must not import `application`, `engines`, `api`, `infrastructure`, or `integrations`.
-- `engines` must not perform delivery/infrastructure work.
-- `application` must not import concrete infrastructure or SLAI adapters.
-- `api` must not import provider or database adapters.
-- `infrastructure` and `integrations` must not import `application` or `api`.
+- Core never imports higher SLAIFI layers.
+- Domain never imports Engines/Application/API/Infrastructure/Integrations.
+- Engines remain deterministic calculation code and do not perform delivery or integration work.
+- Application owns integration ports and does not import concrete adapters.
+- API does not import Infrastructure or concrete Integrations.
+- Integrations may implement Application-owned contracts but may not import Application use cases.
 - No package cycle is permitted.
+- No backend module may use `os.getcwd()`, `Path.cwd()` or `sys.path` mutation for runtime discovery.
 
-## Why this shape
-
-The interfaces required by business workflows are owned by the stable side of the dependency. For example, the market domain owns `MarketDataProvider`; a vendor adapter implements it. This follows dependency inversion and prevents vendor payloads from leaking into financial logic.
-
-## Enforcement
-
-The architecture test parses Python AST imports under `backend/slaifi`, converts imports to package-level edges, validates them against the allow-list, and then performs cycle detection. CI runs this test with the rest of the backend suite.
-
-This is intentionally repository-local rather than relying on a linter plugin: the rules are visible, versioned, testable, and can evolve with explicit review.
+The cleanup utility packages follow the same direction: `core/utils` is lowest-level, `domain/utils` may depend on Core, and `engines/utils` may depend on Core/Domain.

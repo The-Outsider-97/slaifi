@@ -1,0 +1,50 @@
+name: Final Cleanup Validation
+
+on:
+  push:
+    branches: [final-cleanup-consistency]
+  pull_request:
+    branches: [application-api-slai]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}/_slai_host
+    steps:
+      - name: Checkout SLAIFI
+        uses: actions/checkout@v4
+      - name: Checkout SLAI host
+        uses: actions/checkout@v4
+        with:
+          repository: The-Outsider-97/SLAI
+          ref: SLAI-v.2.3
+          path: _slai_host
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install SLAIFI
+        run: python -m pip install -e ".[dev]"
+      - name: Compile
+        run: python -m compileall -q backend run_slaifi.py
+      - name: Ruff
+        run: ruff check backend tests run_slaifi.py
+      - name: Mypy
+        run: MYPYPATH="backend:${GITHUB_WORKSPACE}/_slai_host" mypy backend
+      - name: Tests
+        run: pytest
+      - name: Root launcher smoke
+        run: |
+          cp run_slaifi.py _slai_host/run_slaifi.py
+          cd /tmp
+          PYTHONPATH="${GITHUB_WORKSPACE}:${GITHUB_WORKSPACE}/backend:${GITHUB_WORKSPACE}/_slai_host" \
+            python -c "import run_slaifi; assert callable(run_slaifi.main)"
+      - name: Obsolete-reference scan
+        run: |
+          ! grep -R "slaifi.core.logging" backend tests
+          ! grep -R "engines._validation" backend tests
+          ! grep -R "SLAI/applications/slaifi" README.md docs backend tests run_slaifi.py

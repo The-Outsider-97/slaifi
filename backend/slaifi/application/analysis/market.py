@@ -5,12 +5,13 @@ from datetime import datetime
 
 from slaifi.application.contracts import FinancialReasoner, ReasoningRequest
 from slaifi.application.models import MarketAnalysisResult, TechnicalMeasurements
-from slaifi.core.exceptions import InsufficientDataError, ValidationError
+from slaifi.core.utils.errors import ValidationError
 from slaifi.domain.assets import AssetId
 from slaifi.domain.market import OHLCVBar
 from slaifi.engines.features import calculations as features
 from slaifi.engines.risk import maximum_drawdown
 from slaifi.engines.technical import indicators
+from slaifi.engines.utils.errors import InsufficientDataError
 
 AlignedSeries = tuple[float | None, ...]
 

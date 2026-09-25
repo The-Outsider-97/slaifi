@@ -3,16 +3,9 @@ from decimal import Decimal
 
 import pytest
 
-from slaifi.core.exceptions import FinancialCalculationError
 from slaifi.core.types import CurrencyCode
 from slaifi.domain.assets import AssetClass, AssetId
-from slaifi.domain.portfolio import (
-    CashFlow,
-    CashFlowKind,
-    Portfolio,
-    Trade,
-    TradeSide,
-)
+from slaifi.domain.portfolio import CashFlow, CashFlowKind, Portfolio, Trade, TradeSide
 from slaifi.engines.portfolio import (
     aggregate_income_by_currency,
     build_positions,
@@ -20,14 +13,10 @@ from slaifi.engines.portfolio import (
     portfolio_weights,
     value_portfolio,
 )
+from slaifi.engines.utils.errors import FinancialCalculationError
 
 USD = CurrencyCode("USD")
-ASSET = AssetId(
-    "ABC",
-    AssetClass.EQUITY,
-    exchange="NYSE",
-    currency=USD,
-)
+ASSET = AssetId("ABC", AssetClass.EQUITY, exchange="NYSE", currency=USD)
 
 
 def trade(
@@ -98,18 +87,11 @@ def test_cash_balance_includes_trades_and_cash_flows() -> None:
         ),
     )
     assert cash_balance(portfolio) == Decimal("84")
-    assert aggregate_income_by_currency(portfolio.cash_flows) == {
-        USD: Decimal("5")
-    }
+    assert aggregate_income_by_currency(portfolio.cash_flows) == {USD: Decimal("5")}
 
 
 def test_portfolio_weights_and_valuation_reference() -> None:
-    other = AssetId(
-        "XYZ",
-        AssetClass.EQUITY,
-        exchange="NYSE",
-        currency=USD,
-    )
+    other = AssetId("XYZ", AssetClass.EQUITY, exchange="NYSE", currency=USD)
     other_trade = Trade(
         "T2",
         other,
@@ -141,10 +123,7 @@ def test_portfolio_weights_and_valuation_reference() -> None:
     assert snapshot.cash_balance == Decimal("60")
     assert snapshot.securities_market_value == Decimal("60")
     assert snapshot.total_value == Decimal("120")
-    assert all(
-        item.portfolio_weight == pytest.approx(0.25)
-        for item in snapshot.positions
-    )
+    assert all(item.portfolio_weight == pytest.approx(0.25) for item in snapshot.positions)
 
 
 def test_zero_value_portfolio_has_no_invented_weights() -> None:

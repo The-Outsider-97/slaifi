@@ -39,9 +39,7 @@ def test_lower_layers_obey_exact_dependency_direction() -> None:
                     continue
                 target = module.split(".")[1]
                 if target != layer and target not in ALLOWED[layer]:
-                    violations.append(
-                        f"{path.relative_to(PACKAGE_ROOT)}: {layer} -> {target}"
-                    )
+                    violations.append(f"{path.relative_to(PACKAGE_ROOT)}: {layer} -> {target}")
     assert not violations, "\n".join(violations)
 
 
@@ -74,27 +72,20 @@ def test_lower_layer_dependency_graph_is_acyclic() -> None:
 
 
 def test_lower_layers_contain_no_cwd_or_sys_path_hacks() -> None:
-    forbidden = (
-        "os.getcwd(",
-        "Path.cwd(",
-        "sys.path.append(",
-        "sys.path.insert(",
-    )
+    forbidden = ("os.getcwd(", "Path.cwd(", "sys.path.append(", "sys.path.insert(")
     violations: list[str] = []
     for layer in sorted(LOWER_LAYERS):
         for path in (PACKAGE_ROOT / layer).rglob("*.py"):
             text = path.read_text(encoding="utf-8")
             for token in forbidden:
                 if token in text:
-                    violations.append(
-                        f"{path.relative_to(PACKAGE_ROOT)} contains {token}"
-                    )
+                    violations.append(f"{path.relative_to(PACKAGE_ROOT)} contains {token}")
     assert not violations, "\n".join(violations)
 
 
 def test_package_imports_from_external_working_directory(tmp_path: Path) -> None:
-    applications = tmp_path / "SLAI" / "applications"
-    applications.mkdir(parents=True)
+    application = tmp_path / "SLAI" / "application"
+    application.mkdir(parents=True)
     env = os.environ.copy()
     env["PYTHONPATH"] = str(PACKAGE_ROOT.parent)
     command = [
@@ -107,7 +98,7 @@ def test_package_imports_from_external_working_directory(tmp_path: Path) -> None
     ]
     subprocess.run(
         command,
-        cwd=applications,
+        cwd=application,
         env=env,
         check=True,
         capture_output=True,

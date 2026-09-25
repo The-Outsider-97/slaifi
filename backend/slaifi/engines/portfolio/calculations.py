@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from slaifi.core.exceptions import FinancialCalculationError, ValidationError
 from slaifi.core.types import CurrencyCode
 from slaifi.domain.assets import AssetId
 from slaifi.domain.portfolio import (
@@ -19,6 +18,7 @@ from slaifi.domain.portfolio import (
     Trade,
     TradeSide,
 )
+from slaifi.engines.utils.errors import EngineValidationError, FinancialCalculationError
 
 _ZERO = Decimal("0")
 
@@ -40,7 +40,7 @@ def build_positions(trades: Sequence[Trade]) -> tuple[Position, ...]:
 
     for trade in ordered:
         if trade.trade_id in seen_ids:
-            raise ValidationError(f"duplicate trade_id: {trade.trade_id}")
+            raise EngineValidationError(f"duplicate trade_id: {trade.trade_id}")
         seen_ids.add(trade.trade_id)
         state = states[trade.asset]
         if state.currency is None:
@@ -159,7 +159,7 @@ def value_portfolio(
     """Calculate market value, unrealized P/L, allocation, and cash at as_of."""
 
     if as_of.tzinfo is None or as_of.utcoffset() is None:
-        raise ValidationError("as_of must be timezone-aware")
+        raise EngineValidationError("as_of must be timezone-aware")
     positions = build_positions(portfolio.trades)
     balance = cash_balance(portfolio, initial_cash=initial_cash)
 
@@ -211,7 +211,7 @@ def _validated_price(
             f"missing price for {asset.display_symbol}"
         ) from exc
     if price <= 0:
-        raise ValidationError(
+        raise EngineValidationError(
             f"price for {asset.display_symbol} must be positive"
         )
     return price
