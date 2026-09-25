@@ -1,6 +1,6 @@
 """Orchestrate deterministic market calculations and optional SLAI interpretation."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from slaifi.application.contracts import FinancialReasoner, ReasoningRequest
 from slaifi.application.models import MarketAnalysisResult, TechnicalMeasurements
@@ -11,9 +11,19 @@ from slaifi.engines.features import calculations as features
 from slaifi.engines.risk import maximum_drawdown
 from slaifi.engines.technical import indicators
 
+AlignedSeries = tuple[float | None, ...]
+
+
+def _none_series(size: int) -> AlignedSeries:
+    return tuple(None for _ in range(size))
+
+
+def _last(values: Sequence[float | None]) -> float | None:
+    return values[-1] if values else None
+
 
 class AnalyzeMarketSeries:
-    """Analyze normalized chronological OHLCV observations without fetching data."""
+    """Analyze supplied OHLCV data; unavailable warm-up measurements remain None."""
 
     def __init__(self, reasoner: FinancialReasoner | None = None) -> None:
         self._reasoner = reasoner
@@ -37,50 +47,110 @@ class AnalyzeMarketSeries:
         self._validate_bars(bars)
 
         closes = [float(bar.close) for bar in bars]
-        highs = [float(bar.high) for bar in bars]
-        lows = [float(bar.low) for bar in bars]
         volumes = [float(bar.volume) for bar in bars]
         simple = features.simple_returns(closes)
-        drawdowns = features.drawdown(closes)
-        rolling_vol = features.rolling_volatility(
-            closes,
-            moving_average_period,
-            periods_per_year=periods_per_year,
+        drawdowns = features.drawdown_series(closes)
+        rolling_vol = self._feature_or_none(
+            len(bars),
+            lambda: features.rolling_volatility(
+                closes,
+                moving_average_period,
+                periods_per_year=periods_per_year,
+            ),
         )
-        sma_series = indicators.sma(closes, moving_average_period)
-        ema_series = indicators.ema(closes, moving_average_period)
-        momentum_series = indicators.momentum(closes, momentum_period)
-        rsi_series = indicators.rsi(closes, rsi_period)
-        macd_line, signal_line, _ = indicators.macd(closes)
-        atr_series = indicators.atr(highs, lows, closes, atr_period)
+        sma_series = self._feature_or_none(
+            len(bars), lambda: indicators.sma(closes, moving_average_period)
+        )
+        ema_series = self._feature_or_none(
+            len(bars), lambda: indicators.ema(closes, moving_average_period)
+        )
+        momentum_series = self._feature_or_none(
+            len(bars), lambda: indicators.momentum(closes, momentum_period)
+        )
+        rsi_series = self._feature_or_none(
+            len(bars), lambda: indicators.rsi(closes, rsi_period)
+        )
+        atr_series = self._feature_or_none(
+            len(bars), lambda: indicators.atr(bars, atr_period)
+        )
+        try:
+            macd_result = indicators.macd(closes)
+            macd_value = _last(macd_result.macd_line)
+            signal_value = _last(macd_result.signal_line)
+        except InsufficientDataError:
+            macd_value = None
+            signal_value = None
 
         result = MarketAnalysisResult(
             symbol=asset.display_symbol,
             observation_count=len(bars),
             latest_close=closes[-1],
-            simple_return=simple[-1],
-            rolling_volatility=rolling_vol[-1],
+            simple_return=_last(simple),
+            rolling_volatility=_last(rolling_vol),
             maximum_drawdown=maximum_drawdown(closes),
             technical=TechnicalMeasurements(
-                sma=sma_series[-1],
-                ema=ema_series[-1],
-                momentum=momentum_series[-1],
-                rsi=rsi_series[-1],
-                macd=macd_line[-1],
-                macd_signal=signal_line[-1],
-                atr=atr_series[-1],
+                sma=_last(sma_series),
+                ema=_last(ema_series),
+                momentum=_last(momentum_series),
+                rsi=_last(rsi_series),
+                macd=macd_value,
+                macd_signal=signal_value,
+                atr=_last(atr_series),
             ),
             features={
                 "simple_returns": tuple(simple),
                 "drawdown": tuple(drawdowns),
                 "rolling_volatility": tuple(rolling_vol),
-                "volume_change": tuple(features.volume_change(volumes)),
+                "volume_change": tuple(features.volume_changes(volumes)),
             },
         )
         if self._reasoner is None or not reasoning_objective:
             return result
+        reasoning = self._reasoner.reason(
+            ReasoningRequest(
+                operation="market_analysis",
+                evidence=self._evidence(result),
+                objective=reasoning_objective,
+                assumptions={"periods_per_year": periods_per_year},
+                uncertainty={
+                    "prediction_model_used": False,
+                    "unavailable_measurements_are_null": True,
+                },
+            )
+        )
+        return MarketAnalysisResult(
+            symbol=result.symbol,
+            observation_count=result.observation_count,
+            latest_close=result.latest_close,
+            simple_return=result.simple_return,
+            rolling_volatility=result.rolling_volatility,
+            maximum_drawdown=result.maximum_drawdown,
+            technical=result.technical,
+            features=result.features,
+            reasoning=reasoning,
+        )
 
-        evidence = {
+    @staticmethod
+    def _feature_or_none(
+        size: int,
+        calculation: Callable[[], Sequence[float | None]],
+    ) -> AlignedSeries:
+        try:
+            return tuple(calculation())
+        except InsufficientDataError:
+            return _none_series(size)
+
+    @staticmethod
+    def _validate_bars(bars: Sequence[OHLCVBar]) -> None:
+        previous = None
+        for bar in bars:
+            if previous is not None and bar.end_at <= previous:
+                raise ValidationError("market bars must be strictly chronological and unique")
+            previous = bar.end_at
+
+    @staticmethod
+    def _evidence(result: MarketAnalysisResult) -> dict[str, object]:
+        return {
             "asset": result.symbol,
             "observation_count": result.observation_count,
             "latest_close": result.latest_close,
@@ -97,31 +167,3 @@ class AnalyzeMarketSeries:
                 "atr": result.technical.atr,
             },
         }
-        reasoning = self._reasoner.reason(
-            ReasoningRequest(
-                operation="market_analysis",
-                evidence=evidence,
-                objective=reasoning_objective,
-                assumptions={"periods_per_year": periods_per_year},
-                uncertainty={"prediction_model_used": False},
-            )
-        )
-        return MarketAnalysisResult(
-            symbol=result.symbol,
-            observation_count=result.observation_count,
-            latest_close=result.latest_close,
-            simple_return=result.simple_return,
-            rolling_volatility=result.rolling_volatility,
-            maximum_drawdown=result.maximum_drawdown,
-            technical=result.technical,
-            features=result.features,
-            reasoning=reasoning,
-        )
-
-    @staticmethod
-    def _validate_bars(bars: Sequence[OHLCVBar]) -> None:
-        previous = None
-        for bar in bars:
-            if previous is not None and bar.end_at <= previous:
-                raise ValidationError("market bars must be strictly chronological and unique")
-            previous = bar.end_at
