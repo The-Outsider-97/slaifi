@@ -1,0 +1,43 @@
+"""Stable HTTP mappings for expected SLAIFI failures."""
+
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
+from slaifi.application.contracts import ReasoningUnavailableError
+from slaifi.core.exceptions import FinancialCalculationError, SlaifiError, ValidationError
+
+
+def install_exception_handlers(app: FastAPI) -> None:
+    @app.exception_handler(ReasoningUnavailableError)
+    async def reasoning_unavailable(
+        _: Request,
+        exc: ReasoningUnavailableError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "reasoning_unavailable", "detail": str(exc)},
+        )
+
+    @app.exception_handler(ValidationError)
+    async def validation_error(_: Request, exc: ValidationError) -> JSONResponse:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "validation_error", "detail": str(exc)},
+        )
+
+    @app.exception_handler(FinancialCalculationError)
+    async def calculation_error(
+        _: Request,
+        exc: FinancialCalculationError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "financial_calculation_error", "detail": str(exc)},
+        )
+
+    @app.exception_handler(SlaifiError)
+    async def slaifi_error(_: Request, exc: SlaifiError) -> JSONResponse:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "slaifi_error", "detail": str(exc)},
+        )

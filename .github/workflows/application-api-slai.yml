@@ -1,0 +1,45 @@
+name: Application API SLAI
+
+on:
+  push:
+    branches: [application-api-slai]
+  pull_request:
+    branches: [core-domain-engines, architecture-foundation, main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Compile
+        run: python -m compileall -q backend
+      - name: Ruff
+        run: ruff check backend tests
+      - name: Mypy
+        run: mypy backend
+      - name: Tests
+        run: pytest
+      - name: Standalone API smoke test outside repository cwd
+        run: |
+          cd /tmp
+          python - <<'PY'
+          from fastapi.testclient import TestClient
+          from slaifi.core.config import Settings
+          from slaifi.main import create_app
+
+          app = create_app(Settings(environment="test", slai_enabled=False))
+          with TestClient(app) as client:
+              assert client.get("/health").status_code == 200
+              status = client.get("/api/v1/integrations/slai")
+              assert status.status_code == 200
+              assert status.json()["status"] == "disabled"
+          PY

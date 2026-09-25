@@ -14,16 +14,25 @@ ALLOWED_DEPENDENCIES: dict[str, set[str]] = {
     "engines": {"core", "domain"},
     "application": {"core", "domain", "engines"},
     "infrastructure": {"core", "domain"},
-    "integrations": {"core", "domain"},
+    "integrations": {"core", "domain", "application"},
     "api": {"core", "domain", "application"},
 }
 
 
 def _source_package(path: Path) -> str | None:
     relative = path.relative_to(PACKAGE_ROOT)
-    if len(relative.parts) == 1:
-        return None
-    return relative.parts[0]
+    return relative.parts[0] if len(relative.parts) > 1 else None
+
+
+def _imports(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    modules: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            modules.add(node.module)
+    return modules
 
 
 def _target_package(module_name: str) -> str | None:
@@ -39,17 +48,10 @@ def _import_edges() -> set[tuple[str, str, Path]]:
         source = _source_package(path)
         if source is None:
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
-            modules: list[str] = []
-            if isinstance(node, ast.Import):
-                modules.extend(alias.name for alias in node.names)
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                modules.append(node.module)
-            for module_name in modules:
-                target = _target_package(module_name)
-                if target and target != source:
-                    edges.add((source, target, path))
+        for module_name in _imports(path):
+            target = _target_package(module_name)
+            if target and target != source:
+                edges.add((source, target, path))
     return edges
 
 
@@ -60,7 +62,29 @@ def test_layer_dependencies_follow_allow_list() -> None:
         if allowed is not None and target not in allowed:
             relative = path.relative_to(PACKAGE_ROOT.parent)
             violations.append(f"{relative}: {source} -> {target} is forbidden")
+    assert not violations, "\n".join(violations)
 
+
+def test_integrations_depend_only_on_application_contracts() -> None:
+    violations: list[str] = []
+    root = PACKAGE_ROOT / "integrations"
+    for path in root.rglob("*.py"):
+        for module in _imports(path):
+            if module == "slaifi.application":
+                violations.append(f"{path}: broad application import is forbidden")
+            elif module.startswith("slaifi.application.") and not module.startswith(
+                "slaifi.application.contracts"
+            ):
+                violations.append(f"{path}: integration imports use case {module}")
+    assert not violations, "\n".join(violations)
+
+
+def test_api_does_not_import_integrations_or_infrastructure() -> None:
+    violations: list[str] = []
+    for path in (PACKAGE_ROOT / "api").rglob("*.py"):
+        for module in _imports(path):
+            if module.startswith(("slaifi.integrations", "slaifi.infrastructure")):
+                violations.append(f"{path}: API imports {module}")
     assert not violations, "\n".join(violations)
 
 
@@ -69,14 +93,12 @@ def test_internal_package_graph_is_acyclic() -> None:
     for source, target, _ in _import_edges():
         if source in ALLOWED_DEPENDENCIES and target in ALLOWED_DEPENDENCIES:
             graph[source].add(target)
-
     visiting: set[str] = set()
     visited: set[str] = set()
 
     def visit(node: str, trail: tuple[str, ...]) -> None:
         if node in visiting:
-            cycle = " -> ".join((*trail, node))
-            raise AssertionError(f"circular SLAIFI package dependency detected: {cycle}")
+            raise AssertionError("circular dependency: " + " -> ".join((*trail, node)))
         if node in visited:
             return
         visiting.add(node)
