@@ -12,7 +12,7 @@ function runtimeLabel(runtime: SlaiRuntimeStatus | null, statusOverride?: string
   if (!runtime) return "SLAI runtime status unavailable";
   const agent = runtime.agent ? runtime.agent.replace(/_/g, " ") : "Reasoning Agent";
   const version = runtime.agent_version ? ` v${runtime.agent_version}` : "";
-  return `SLAI analysis · ${agent}${version} · ${statusOverride ?? runtime.status}`;
+  return `SLAI analysis · illustrative data · ${agent}${version} · ${statusOverride ?? runtime.status}`;
 }
 
 export function SlaiInsightCard({ runtime, analysis, loading, error, onExplore }: SlaiInsightCardProps) {

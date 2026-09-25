@@ -9,10 +9,13 @@ import { useMarketDashboard } from "../hooks/useMarketDashboard";
 import type { MarketOverview } from "../types/market";
 
 function summaryMarkets(overview: MarketOverview | null): SummaryMarket[] {
+  const useApiValues = overview !== null && overview.data_mode !== "mock";
   const quotes = new Map((overview?.quotes ?? []).map((quote) => [quote.symbol.toUpperCase(), quote]));
   return SUMMARY_FALLBACKS.map((fallback) => {
-    const quote = quotes.get(fallback.key);
-    if (!quote) return { ...fallback, sparkline: [...fallback.sparkline], source: "illustrative" as const };
+    const quote = useApiValues ? quotes.get(fallback.key) : undefined;
+    if (!quote) {
+      return { ...fallback, sparkline: [...fallback.sparkline], source: "illustrative" as const };
+    }
     return {
       key: fallback.key,
       name: fallback.name,
@@ -39,7 +42,9 @@ export function MarketOverviewPage() {
             <p>A clearer view of the market. A more considered next move.</p>
           </div>
           <span className="snapshot-note">
-            {dashboard.loading ? "Loading market snapshot" : `${dataMode === "mock" ? "Illustrative market snapshot" : "Market snapshot"} · USD`}
+            {dashboard.loading
+              ? "Loading market snapshot"
+              : `${dataMode === "mock" ? "Illustrative market snapshot" : "Market snapshot"} · USD`}
           </span>
         </header>
 
@@ -49,7 +54,9 @@ export function MarketOverviewPage() {
           </div>
         ) : null}
         {dashboard.slaiError ? (
-          <div className="inline-alert inline-alert--quiet" role="status">SLAI status could not be reached; deterministic market content remains available.</div>
+          <div className="inline-alert inline-alert--quiet" role="status">
+            SLAI status could not be reached; deterministic market content remains available.
+          </div>
         ) : null}
 
         <section className="summary-grid" aria-label="Market summary">

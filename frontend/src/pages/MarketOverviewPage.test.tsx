@@ -8,9 +8,9 @@ const marketOverview = {
   generated_at: "2026-09-25T18:00:00+00:00",
   data_mode: "mock",
   quotes: [
-    { symbol: "SPY", asset_class: "etf", price: "5782.76", currency: "USD", change_percent: "0.82", observed_at: "2026-09-25T18:00:00+00:00", source: "mock" },
-    { symbol: "QQQ", asset_class: "etf", price: "18239.92", currency: "USD", change_percent: "1.24", observed_at: "2026-09-25T18:00:00+00:00", source: "mock" },
-    { symbol: "DIA", asset_class: "etf", price: "42313.00", currency: "USD", change_percent: "0.45", observed_at: "2026-09-25T18:00:00+00:00", source: "mock" },
+    { symbol: "SPY", asset_class: "etf", price: "100.00", currency: "USD", change_percent: "0.42", observed_at: "2026-09-25T18:00:00+00:00", source: "mock" },
+    { symbol: "QQQ", asset_class: "etf", price: "200.00", currency: "USD", change_percent: "-0.18", observed_at: "2026-09-25T18:00:00+00:00", source: "mock" },
+    { symbol: "DIA", asset_class: "etf", price: "150.00", currency: "USD", change_percent: "0.11", observed_at: "2026-09-25T18:00:00+00:00", source: "mock" },
   ],
 };
 
@@ -103,11 +103,13 @@ describe("MarketOverviewPage", () => {
     expect(screen.getByText("Loading market snapshot")).toBeInTheDocument();
   });
 
-  it("keeps the dashboard useful and labels SLAI as unavailable", async () => {
+  it("keeps mock market values illustrative and labels SLAI as unavailable", async () => {
     installFetch(unavailableStatus);
     render(<MarketOverviewPage />);
 
     expect(await screen.findByText("5,782.76")).toBeInTheDocument();
+    expect(screen.queryByText("100.00")).not.toBeInTheDocument();
+    expect(screen.getByText("Illustrative market snapshot · USD")).toBeInTheDocument();
     expect(screen.getByText("Illustrative analysis · SLAI engine unavailable")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Explore the reasoning/i })).toBeDisabled();
     expect(screen.getByText(/Illustrative sample signals/i)).toBeInTheDocument();
@@ -125,7 +127,7 @@ describe("MarketOverviewPage", () => {
     expect(await screen.findByText("Evidence, in context.")).toBeInTheDocument();
     expect(screen.getByText(/Momentum is positive/)).toBeInTheDocument();
     expect(screen.getByText("cause_effect")).toBeInTheDocument();
-    expect(screen.getByText("SLAI analysis · reasoning v2.3.0 · available")).toBeInTheDocument();
+    expect(screen.getByText("SLAI analysis · illustrative data · reasoning v2.3.0 · available")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
