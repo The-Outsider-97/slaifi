@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from slaifi.application.contracts import ReasoningResult
+from slaifi.core.types import CurrencyCode
 from slaifi.domain.assets import AssetClass, AssetId
 from slaifi.domain.market import OHLCVBar
 
@@ -25,7 +26,7 @@ class AssetInput(BaseModel):
             symbol=self.symbol,
             asset_class=self.asset_class,
             exchange=self.exchange,
-            currency=self.currency,
+            currency=CurrencyCode(self.currency) if self.currency is not None else None,
             instrument_id=self.instrument_id,
         )
 
