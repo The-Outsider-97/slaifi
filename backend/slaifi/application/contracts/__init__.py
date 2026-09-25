@@ -5,6 +5,13 @@ from slaifi.application.contracts.reasoning import (
     ReasoningRequest,
     ReasoningResult,
     ReasoningStatus,
+    ReasoningUnavailableError,
 )
 
-__all__ = ["FinancialReasoner", "ReasoningRequest", "ReasoningResult", "ReasoningStatus"]
+__all__ = [
+    "FinancialReasoner",
+    "ReasoningRequest",
+    "ReasoningResult",
+    "ReasoningStatus",
+    "ReasoningUnavailableError",
+]

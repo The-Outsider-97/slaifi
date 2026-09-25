@@ -4,6 +4,12 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Mapping, Protocol
 
+from slaifi.core.exceptions import SlaifiError
+
+
+class ReasoningUnavailableError(SlaifiError):
+    """Configured contextual reasoning is required but currently unavailable."""
+
 
 class ReasoningStatus(StrEnum):
     AVAILABLE = "available"
@@ -14,12 +20,7 @@ class ReasoningStatus(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ReasoningRequest:
-    """Immutable evidence envelope supplied to a contextual reasoner.
-
-    Numerical values in ``evidence`` are authoritative outputs from SLAIFI's
-    Domain/Engines layers. A reasoner may interpret them but must not replace
-    or silently mutate them.
-    """
+    """Immutable evidence envelope supplied to a contextual reasoner."""
 
     operation: str
     evidence: Mapping[str, Any]

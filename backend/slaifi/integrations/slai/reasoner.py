@@ -16,19 +16,14 @@ from slaifi.application.contracts import (
     ReasoningRequest,
     ReasoningResult,
     ReasoningStatus,
+    ReasoningUnavailableError,
 )
 
 logger = logging.getLogger(__name__)
 
 
 class SlaiFinancialReasoner:
-    """Use SLAI AgentFactory + SharedMemory without coupling lower layers to SLAI.
-
-    The adapter is lazy. Importing SLAIFI therefore does not require the complete
-    SLAI runtime. When SLAI is available, the adapter creates the registered
-    reasoning agent through ``AgentFactory`` and records request/result envelopes
-    in SLAI SharedMemory for runtime traceability.
-    """
+    """Use SLAI AgentFactory + SharedMemory without coupling lower layers to SLAI."""
 
     def __init__(
         self,
@@ -60,7 +55,9 @@ class SlaiFinancialReasoner:
             )
         if not self._ensure_runtime():
             if self._required:
-                raise RuntimeError(self._initialization_error or "SLAI runtime unavailable")
+                raise ReasoningUnavailableError(
+                    self._initialization_error or "SLAI runtime unavailable"
+                )
             return ReasoningResult(
                 status=ReasoningStatus.UNAVAILABLE,
                 interpretation=None,
@@ -119,7 +116,9 @@ class SlaiFinancialReasoner:
                 extra={"component": "slai", "operation": request.operation},
             )
             if self._required:
-                raise
+                raise ReasoningUnavailableError(
+                    f"SLAI reasoning failed: {type(exc).__name__}: {exc}"
+                ) from exc
             return ReasoningResult(
                 status=ReasoningStatus.DEGRADED,
                 interpretation=None,
