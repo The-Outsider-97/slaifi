@@ -1,6 +1,10 @@
 from fastapi.testclient import TestClient
 
-from slaifi.application.contracts import ReasoningRequest, ReasoningResult, ReasoningStatus
+from slaifi.application.contracts import (
+    ReasoningRequest,
+    ReasoningResult,
+    ReasoningStatus,
+)
 from slaifi.core.config import Settings
 from slaifi.main import create_app
 
@@ -13,6 +17,8 @@ class FakeReasoner:
             raw_result={"result": f"reasoned:{request.operation}"},
             agent="reasoning",
             agent_version="test",
+            correlation_id="portfolio-correlation",
+            request_id=request.request_id,
         )
 
     def status(self) -> ReasoningResult:
@@ -66,14 +72,22 @@ def test_portfolio_analysis_endpoint_integrates_financial_layers_and_reasoning()
         "reasoning_objective": "Assess the portfolio against the supplied goal.",
     }
     with TestClient(app) as client:
-        response = client.post("/api/v1/analysis/portfolio", json=payload)
+        response = client.post(
+            "/api/v1/analysis/portfolio",
+            json=payload,
+            headers={"X-Request-ID": "portfolio-request"},
+        )
 
     assert response.status_code == 200
     body = response.json()
     assert body["snapshot"]["total_value"] == "1039"
     assert body["risk"]["observation_count"] == 4
     assert body["goals"]["returns"]["annual_rate_gap"] == -0.02
-    assert body["reasoning"]["interpretation"] == "reasoned:portfolio_analysis"
+    reasoning = body["reasoning"]
+    assert reasoning["interpretation"] == "reasoned:portfolio_analysis"
+    assert reasoning["request_id"] == "portfolio-request"
+    assert reasoning["correlation_id"] == "portfolio-correlation"
+    assert "raw_result" not in reasoning
 
 
 def test_portfolio_analysis_endpoint_rejects_future_ledger_event() -> None:
@@ -96,7 +110,12 @@ def test_portfolio_analysis_endpoint_rejects_future_ledger_event() -> None:
                 }
             ],
         },
-        "prices": [{"asset": {"symbol": "ABC", "currency": "USD"}, "price": "110"}],
+        "prices": [
+            {
+                "asset": {"symbol": "ABC", "currency": "USD"},
+                "price": "110",
+            }
+        ],
         "as_of": "2026-01-31T00:00:00+00:00",
         "initial_cash": "1000",
     }

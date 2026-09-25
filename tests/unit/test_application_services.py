@@ -2,9 +2,14 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from slaifi.application.analysis import AnalyzeMarketSeries, AnalyzePortfolio
-from slaifi.application.contracts import ReasoningRequest, ReasoningResult, ReasoningStatus
+from slaifi.application.contracts import (
+    ReasoningRequest,
+    ReasoningResult,
+    ReasoningStatus,
+)
+from slaifi.application.goals import EvaluateFinancialGoal
 from slaifi.domain.assets import AssetId
-from slaifi.domain.goals import FinancialGoal, ReturnTarget
+from slaifi.domain.goals import FinancialGoal, IncomePeriod, IncomeTarget, ReturnTarget
 from slaifi.domain.market import OHLCVBar
 from slaifi.domain.portfolio import Portfolio, Trade, TradeSide
 
@@ -20,10 +25,15 @@ class RecordingReasoner:
             interpretation="Contextual interpretation only.",
             raw_result={"result": "Contextual interpretation only."},
             agent="reasoning",
+            correlation_id="test-correlation",
+            request_id=request.request_id,
         )
 
     def status(self) -> ReasoningResult:
-        return ReasoningResult(status=ReasoningStatus.AVAILABLE, interpretation=None)
+        return ReasoningResult(
+            status=ReasoningStatus.AVAILABLE,
+            interpretation=None,
+        )
 
 
 def _bars(asset: AssetId, count: int = 40) -> tuple[OHLCVBar, ...]:
@@ -59,6 +69,7 @@ def test_market_analysis_keeps_reasoning_separate_from_calculations() -> None:
         rsi_period=5,
         atr_period=5,
         reasoning_objective="Explain the measured market state.",
+        request_id="market-request",
     )
     assert result.latest_close == 140.0
     assert result.technical.sma is not None
@@ -68,6 +79,7 @@ def test_market_analysis_keeps_reasoning_separate_from_calculations() -> None:
     request = reasoner.requests[0]
     assert request.evidence["latest_close"] == 140.0
     assert request.uncertainty["prediction_model_used"] is False
+    assert request.request_id == "market-request"
 
 
 def test_portfolio_analysis_composes_valuation_risk_goal_and_reasoning() -> None:
@@ -101,6 +113,7 @@ def test_portfolio_analysis_composes_valuation_risk_goal_and_reasoning() -> None
         goal=FinancialGoal("g1", return_target=ReturnTarget(0.10)),
         assumed_annual_return_rate=0.08,
         reasoning_objective="Assess alignment with the stated goal.",
+        request_id="portfolio-request",
     )
     assert result.snapshot.total_value == Decimal("1039")
     assert result.risk is not None
@@ -109,3 +122,25 @@ def test_portfolio_analysis_composes_valuation_risk_goal_and_reasoning() -> None
     assert result.goals.returns.annual_rate_gap == -0.02
     assert result.reasoning is not None
     assert reasoner.requests[0].operation == "portfolio_analysis"
+    assert reasoner.requests[0].request_id == "portfolio-request"
+
+
+def test_goal_service_reuses_authoritative_goal_arithmetic_before_reasoning() -> None:
+    reasoner = RecordingReasoner()
+    goal = FinancialGoal(
+        "income",
+        income_target=IncomeTarget(Decimal("150"), IncomePeriod.WEEKLY),
+    )
+    result = EvaluateFinancialGoal(reasoner).execute(
+        goal,
+        available_capital=Decimal("50000"),
+        assumed_annual_income_yield_rate=0.05,
+        reasoning_objective="Explain the feasibility result.",
+        request_id="goal-request",
+    )
+    assert result.evaluation.income is not None
+    assert result.evaluation.income.annual_income_target == Decimal("7800")
+    assert result.evaluation.income.required_yield_rate == 0.156
+    assert result.reasoning is not None
+    assert reasoner.requests[0].operation == "goal_evaluation"
+    assert reasoner.requests[0].request_id == "goal-request"
