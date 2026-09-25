@@ -45,7 +45,7 @@ class AnalyzeMarketSeries:
             raise ValidationError("periods_per_year must be positive")
         if len(bars) < 2:
             raise InsufficientDataError("market analysis requires at least two bars")
-        self._validate_bars(bars)
+        self._validate_bars(asset, bars)
 
         closes = [float(bar.close) for bar in bars]
         volumes = [float(bar.volume) for bar in bars]
@@ -142,9 +142,13 @@ class AnalyzeMarketSeries:
             return _none_series(size)
 
     @staticmethod
-    def _validate_bars(bars: Sequence[OHLCVBar]) -> None:
+    def _validate_bars(asset: AssetId, bars: Sequence[OHLCVBar]) -> None:
         previous: datetime | None = None
         for bar in bars:
+            if bar.asset != asset:
+                raise ValidationError(
+                    "all market bars must identify the asset being analyzed"
+                )
             if previous is not None and bar.end_at <= previous:
                 raise ValidationError("market bars must be strictly chronological and unique")
             previous = bar.end_at

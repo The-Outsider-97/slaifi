@@ -38,6 +38,7 @@ class AnalyzePortfolio:
         current_expected_annual_income: Decimal | None = None,
         reasoning_objective: str | None = None,
     ) -> PortfolioAnalysisResult:
+        self._validate_snapshot_cutoff(portfolio, as_of)
         snapshot = value_portfolio(
             portfolio,
             prices,
@@ -107,6 +108,15 @@ class AnalyzePortfolio:
             goals=result.goals,
             reasoning=reasoning,
         )
+
+    @staticmethod
+    def _validate_snapshot_cutoff(portfolio: Portfolio, as_of: datetime) -> None:
+        if as_of.tzinfo is None or as_of.utcoffset() is None:
+            raise ValidationError("as_of must be timezone-aware")
+        if any(trade.occurred_at > as_of for trade in portfolio.trades):
+            raise ValidationError("portfolio snapshot cannot include trades after as_of")
+        if any(flow.occurred_at > as_of for flow in portfolio.cash_flows):
+            raise ValidationError("portfolio snapshot cannot include cash flows after as_of")
 
     @staticmethod
     def _evidence(result: PortfolioAnalysisResult) -> dict[str, object]:
