@@ -34,9 +34,13 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str)
 
 
-def configure_logging(level: str) -> None:
-    """Configure process logging without emitting secrets or portfolio payloads."""
+def configure_logging(level: str, *, force: bool = False) -> None:
+    """Configure standalone logging while preserving an embedding host by default."""
 
     handler = logging.StreamHandler()
     handler.setFormatter(JsonFormatter())
-    logging.basicConfig(level=level.upper(), handlers=[handler], force=True)
+    logging.basicConfig(
+        level=level.upper(),
+        handlers=[handler],
+        force=force,
+    )

@@ -1,5 +1,7 @@
 """SLAIFI backend composition root."""
 
+from typing import Any
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -25,8 +27,16 @@ def create_app(
     settings: Settings | None = None,
     market_provider: MarketDataProvider | None = None,
     financial_reasoner: FinancialReasoner | None = None,
+    *,
+    slai_factory: Any = None,
+    slai_shared_memory: Any = None,
 ) -> FastAPI:
-    """Create the HTTP application and wire implementations at one composition root."""
+    """Create SLAIFI and wire concrete runtime dependencies at the composition root.
+
+    An embedding SLAI process should inject its existing AgentFactory and
+    SharedMemory instances. Standalone SLAIFI can omit them; the SLAI adapter
+    then attempts lazy discovery and degrades cleanly when the host is absent.
+    """
 
     runtime_settings = settings or get_settings()
     configure_logging(runtime_settings.log_level)
@@ -52,6 +62,8 @@ def create_app(
         agent_type=runtime_settings.slai_reasoning_agent,
         reasoning_type=runtime_settings.slai_reasoning_type,
         memory_ttl_seconds=runtime_settings.slai_memory_ttl_seconds,
+        factory=slai_factory,
+        shared_memory=slai_shared_memory,
     )
     if runtime_settings.slai_required:
         status = reasoner.status()

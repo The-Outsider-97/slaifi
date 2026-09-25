@@ -22,41 +22,37 @@ SLAI SharedMemory
 
 Core, Domain, and Engines never import SLAI. API routes never import SLAI. The concrete adapter is created at the composition root.
 
+## Canonical embedded startup
+
+When SLAIFI is hosted by the wider SLAI process, the host should inject its already-created runtime components instead of relying on working-directory imports:
+
+```python
+app = create_app(
+    slai_factory=agent_factory,
+    slai_shared_memory=shared_memory,
+)
+```
+
+This keeps the canonical `SLAI/applications/slaifi/` installation independent of `os.getcwd()` and avoids `sys.path` manipulation. Lazy imports remain a standalone convenience when `src` is already importable.
+
+SLAIFI logging also preserves existing root handlers by default, so embedding the application does not replace SLAI's logging ownership.
+
 ## Runtime integration
 
-`SlaiFinancialReasoner` lazily imports:
+`SlaiFinancialReasoner` uses `AgentFactory.create("reasoning", shared_memory=...)`. It does not instantiate `ReasoningAgent` directly.
 
-- `src.agents.agent_factory.AgentFactory`;
-- `src.agents.collaborative.shared_memory.SharedMemory`.
+For each reasoning call the adapter creates a versioned evidence envelope containing operation, objective, authoritative SLAIFI evidence, constraints, assumptions, uncertainty metadata, and a correlation identifier. Request and result envelopes are written to SharedMemory under `slaifi:reasoning:*` keys with configurable TTL and tags.
 
-It creates the registered reasoning agent through `AgentFactory.create("reasoning", shared_memory=...)`. This follows SLAI's runtime ownership model instead of constructing a `ReasoningAgent` directly.
-
-For each reasoning call the adapter creates a versioned evidence envelope containing:
-
-- operation;
-- objective;
-- authoritative SLAIFI evidence;
-- constraints;
-- assumptions;
-- uncertainty metadata;
-- correlation identifier.
-
-The request and result are written to SharedMemory under `slaifi:reasoning:*` keys with a configurable TTL and tags. SharedMemory is coordination/audit context, not SLAIFI's future durable financial database.
+SharedMemory is coordination/audit context, not SLAIFI's future durable financial database.
 
 ## Numerical authority
 
-The reasoning context explicitly tells SLAI not to alter or recalculate authoritative numerical evidence. The returned interpretation is stored separately from calculated features, portfolio snapshots, risk results, and goal evaluations.
-
-This prevents a qualitative reasoning result from silently becoming financial truth.
+The reasoning context explicitly tells SLAI not to alter or recalculate authoritative numerical evidence. Returned interpretation remains separate from calculated features, portfolio snapshots, risk results, and goal evaluations.
 
 ## Availability modes
 
-`SLAIFI_SLAI_ENABLED=false` disables the integration while keeping the financial API operational.
+`SLAIFI_SLAI_ENABLED=false` disables contextual reasoning while keeping financial calculations operational. SLAI is optional by default; absence produces an `unavailable` reasoning state. `SLAIFI_SLAI_REQUIRED=true` changes this to fail-fast behavior and uses `ReasoningUnavailableError` for explicit service-unavailable handling.
 
-By default SLAI is optional. If the wider runtime is absent, financial calculations still execute and the reasoning result reports `unavailable`.
+## Scope
 
-`SLAIFI_SLAI_REQUIRED=true` changes this to fail-fast behavior: application creation fails when SLAI cannot initialize, and required reasoning failures use a typed `ReasoningUnavailableError` mapped to HTTP 503 when they occur during a request.
-
-## Scope of integration
-
-The adapter deliberately uses the SLAI component that owns `reasoning`, `inference`, and `decision_support`. It does not indiscriminately invoke Language, Browser, Knowledge, Safety, or other agents for every financial request. Additional agents should be added only through explicit SLAIFI application contracts when their outputs have a defined provenance and responsibility. This avoids turning AgentFactory into an implicit service locator inside business logic.
+The adapter uses the SLAI component whose registered responsibility includes reasoning, inference, and decision support. It does not indiscriminately invoke Language, Browser, Knowledge, Safety, or other agents for every financial request. Additional SLAI agents should be integrated only behind explicit application contracts with defined provenance and responsibility; this prevents AgentFactory from becoming an implicit service locator inside business logic.
