@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from slaifi.api.dependencies import (
     get_market_analysis_service,
     get_portfolio_analysis_service,
+    get_request_id,
     get_runtime_settings,
 )
 from slaifi.api.schemas.analysis import (
@@ -29,6 +30,7 @@ def analyze_market(
     payload: MarketAnalysisRequest,
     service: Annotated[AnalyzeMarketSeries, Depends(get_market_analysis_service)],
     settings: Annotated[Settings, Depends(get_runtime_settings)],
+    request_id: Annotated[str | None, Depends(get_request_id)],
 ) -> MarketAnalysisResponse:
     if len(payload.bars) > settings.api_max_market_bars:
         raise HTTPException(
@@ -46,6 +48,7 @@ def analyze_market(
         rsi_period=payload.rsi_period,
         atr_period=payload.atr_period,
         reasoning_objective=payload.reasoning_objective,
+        request_id=request_id,
     )
     return MarketAnalysisResponse.from_application(result)
 
@@ -55,6 +58,7 @@ def analyze_portfolio(
     payload: PortfolioAnalysisRequest,
     service: Annotated[AnalyzePortfolio, Depends(get_portfolio_analysis_service)],
     settings: Annotated[Settings, Depends(get_runtime_settings)],
+    request_id: Annotated[str | None, Depends(get_request_id)],
 ) -> PortfolioAnalysisResponse:
     if len(payload.portfolio.trades) > settings.api_max_portfolio_trades:
         raise HTTPException(
@@ -86,5 +90,6 @@ def analyze_portfolio(
         assumed_annual_income_yield_rate=payload.assumed_annual_income_yield_rate,
         current_expected_annual_income=payload.current_expected_annual_income,
         reasoning_objective=payload.reasoning_objective,
+        request_id=request_id,
     )
     return PortfolioAnalysisResponse.from_application(result)

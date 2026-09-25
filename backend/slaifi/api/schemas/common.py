@@ -2,7 +2,6 @@
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -56,14 +55,16 @@ class OHLCVBarInput(BaseModel):
 
 
 class ReasoningResponse(BaseModel):
+    """Public SLAI provenance without exposing raw agent or memory payloads."""
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     status: str
     interpretation: str | None
-    raw_result: dict[str, Any]
     agent: str | None
     agent_version: str | None
-    memory_key: str | None
+    correlation_id: str | None
+    request_id: str | None
     warnings: list[str]
 
     @classmethod
@@ -71,9 +72,9 @@ class ReasoningResponse(BaseModel):
         return cls(
             status=result.status.value,
             interpretation=result.interpretation,
-            raw_result=dict(result.raw_result),
             agent=result.agent,
             agent_version=result.agent_version,
-            memory_key=result.memory_key,
+            correlation_id=result.correlation_id,
+            request_id=result.request_id,
             warnings=list(result.warnings),
         )
