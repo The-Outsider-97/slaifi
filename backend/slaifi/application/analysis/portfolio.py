@@ -5,12 +5,12 @@ from datetime import datetime
 from decimal import Decimal
 
 from slaifi.application.contracts import FinancialReasoner, ReasoningRequest
-from slaifi.application.models import GoalEvaluationBundle, PortfolioAnalysisResult
+from slaifi.application.goals import evaluate_goal_bundle
+from slaifi.application.models import PortfolioAnalysisResult
 from slaifi.core.exceptions import ValidationError
 from slaifi.domain.assets import AssetId
 from slaifi.domain.goals import FinancialGoal
 from slaifi.domain.portfolio import Portfolio
-from slaifi.engines.goals import evaluate_income_goal, evaluate_return_goal
 from slaifi.engines.portfolio import value_portfolio
 from slaifi.engines.risk import calculate_risk_statistics
 
@@ -37,6 +37,7 @@ class AnalyzePortfolio:
         assumed_annual_income_yield_rate: float | None = None,
         current_expected_annual_income: Decimal | None = None,
         reasoning_objective: str | None = None,
+        request_id: str | None = None,
     ) -> PortfolioAnalysisResult:
         self._validate_snapshot_cutoff(portfolio, as_of)
         snapshot = value_portfolio(
@@ -66,21 +67,13 @@ class AnalyzePortfolio:
 
         goals = None
         if goal is not None:
-            income = None
-            returns_goal = None
-            if goal.income_target is not None:
-                income = evaluate_income_goal(
-                    goal.income_target,
-                    available_capital=max(snapshot.total_value, Decimal("0")),
-                    assumed_annual_yield_rate=assumed_annual_income_yield_rate,
-                    current_expected_annual_income=current_expected_annual_income,
-                )
-            if goal.return_target is not None:
-                returns_goal = evaluate_return_goal(
-                    goal.return_target,
-                    assumed_annual_return_rate=assumed_annual_return_rate,
-                )
-            goals = GoalEvaluationBundle(income=income, returns=returns_goal)
+            goals = evaluate_goal_bundle(
+                goal,
+                available_capital=max(snapshot.total_value, Decimal("0")),
+                assumed_annual_return_rate=assumed_annual_return_rate,
+                assumed_annual_income_yield_rate=assumed_annual_income_yield_rate,
+                current_expected_annual_income=current_expected_annual_income,
+            )
 
         result = PortfolioAnalysisResult(snapshot=snapshot, risk=risk, goals=goals)
         if self._reasoner is None or not reasoning_objective:
@@ -98,8 +91,11 @@ class AnalyzePortfolio:
                     "assumed_annual_return_rate": assumed_annual_return_rate,
                     "assumed_annual_income_yield_rate": assumed_annual_income_yield_rate,
                 },
-                uncertainty={"prediction_model_used": False, "fx_conversion_used": False},
-                correlation_id=portfolio.portfolio_id,
+                uncertainty={
+                    "prediction_model_used": False,
+                    "fx_conversion_used": False,
+                },
+                request_id=request_id,
             )
         )
         return PortfolioAnalysisResult(
@@ -169,7 +165,9 @@ class AnalyzePortfolio:
             "max_sector_weight": constraints.max_sector_weight,
             "max_leverage": constraints.max_leverage,
             "max_short_exposure": constraints.max_short_exposure,
-            "allowed_asset_classes": sorted(item.value for item in constraints.allowed_asset_classes),
+            "allowed_asset_classes": sorted(
+                item.value for item in constraints.allowed_asset_classes
+            ),
             "prohibited_asset_classes": sorted(
                 item.value for item in constraints.prohibited_asset_classes
             ),

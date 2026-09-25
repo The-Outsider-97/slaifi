@@ -35,8 +35,18 @@ class MarketAnalysisResult:
 
 @dataclass(frozen=True, slots=True)
 class GoalEvaluationBundle:
+    """Authoritative deterministic goal calculations only."""
+
     income: IncomeGoalEvaluation | None = None
     returns: ReturnGoalEvaluation | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class GoalAnalysisResult:
+    """Goal calculations plus optional contextual SLAI interpretation."""
+
+    evaluation: GoalEvaluationBundle
+    reasoning: ReasoningResult | None = None
 
 
 @dataclass(frozen=True, slots=True)

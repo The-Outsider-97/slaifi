@@ -40,6 +40,7 @@ class AnalyzeMarketSeries:
         rsi_period: int = 14,
         atr_period: int = 14,
         reasoning_objective: str | None = None,
+        request_id: str | None = None,
     ) -> MarketAnalysisResult:
         if periods_per_year <= 0:
             raise ValidationError("periods_per_year must be positive")
@@ -117,6 +118,7 @@ class AnalyzeMarketSeries:
                     "prediction_model_used": False,
                     "unavailable_measurements_are_null": True,
                 },
+                request_id=request_id,
             )
         )
         return MarketAnalysisResult(
@@ -150,7 +152,9 @@ class AnalyzeMarketSeries:
                     "all market bars must identify the asset being analyzed"
                 )
             if previous is not None and bar.end_at <= previous:
-                raise ValidationError("market bars must be strictly chronological and unique")
+                raise ValidationError(
+                    "market bars must be strictly chronological and unique"
+                )
             previous = bar.end_at
 
     @staticmethod

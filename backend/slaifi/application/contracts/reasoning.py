@@ -29,6 +29,7 @@ class ReasoningRequest:
     assumptions: Mapping[str, Any] = field(default_factory=dict)
     uncertainty: Mapping[str, Any] = field(default_factory=dict)
     correlation_id: str | None = None
+    request_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +42,8 @@ class ReasoningResult:
     agent: str | None = None
     agent_version: str | None = None
     memory_key: str | None = None
+    correlation_id: str | None = None
+    request_id: str | None = None
     warnings: tuple[str, ...] = ()
 
 
