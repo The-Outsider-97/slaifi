@@ -1,6 +1,7 @@
 """Orchestrate deterministic market calculations and optional SLAI interpretation."""
 
 from collections.abc import Callable, Sequence
+from datetime import datetime
 
 from slaifi.application.contracts import FinancialReasoner, ReasoningRequest
 from slaifi.application.models import MarketAnalysisResult, TechnicalMeasurements
@@ -142,7 +143,7 @@ class AnalyzeMarketSeries:
 
     @staticmethod
     def _validate_bars(bars: Sequence[OHLCVBar]) -> None:
-        previous = None
+        previous: datetime | None = None
         for bar in bars:
             if previous is not None and bar.end_at <= previous:
                 raise ValidationError("market bars must be strictly chronological and unique")
