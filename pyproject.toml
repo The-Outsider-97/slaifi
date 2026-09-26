@@ -7,7 +7,7 @@ name = "slaifi"
 version = "0.3.0"
 description = "SLAI Financial Intelligence"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "J.E. Remy" }]
 dependencies = [
@@ -26,25 +26,30 @@ dev = [
   "ruff>=0.8,<1.0",
 ]
 
+# Standalone installation still exposes the financial package as ``slaifi``.
+# Integrated execution from SLAI is owned by applications/slaifi/__init__.py,
+# matching SLAI's application namespace without requiring installation.
 [tool.setuptools]
 package-dir = { "" = "backend" }
+
 [tool.setuptools.packages.find]
 where = ["backend"]
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers"
-pythonpath = ["backend"]
+pythonpath = [".", "backend"]
 testpaths = ["tests"]
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py310"
 line-length = 100
 src = ["backend", "tests"]
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.10"
 strict = true
 mypy_path = "backend"
 packages = ["slaifi"]
