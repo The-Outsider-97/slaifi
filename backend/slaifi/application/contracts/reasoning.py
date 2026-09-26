@@ -44,6 +44,11 @@ class ReasoningResult:
     memory_key: str | None = None
     correlation_id: str | None = None
     request_id: str | None = None
+    reasoning_strategy: str | None = None
+    confidence: float | None = None
+    outcome: str | None = None
+    degraded: bool = False
+    validation_status: str | None = None
     warnings: tuple[str, ...] = ()
 
 
