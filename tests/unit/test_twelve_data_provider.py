@@ -2,9 +2,11 @@ import asyncio
 from datetime import timedelta
 from decimal import Decimal
 
+import httpx
 import pytest
 
 from slaifi.core.types import CurrencyCode
+from slaifi.core.utils.errors import InfrastructureError
 from slaifi.domain.assets import AssetId
 from slaifi.domain.market.models import PriceQuote
 from slaifi.infrastructure.market_data.twelve_data_provider import TwelveDataMarketDataProvider
@@ -20,6 +22,34 @@ def test_market_interval_duration_is_not_hardcoded_to_one_day() -> None:
 def test_unsupported_market_interval_fails_explicitly() -> None:
     with pytest.raises(ValueError, match="unsupported market interval"):
         TwelveDataMarketDataProvider._interval_delta("1month")
+
+
+def test_provider_http_error_is_translated_to_infrastructure_error() -> None:
+    request = httpx.Request("GET", "https://api.twelvedata.com/quote")
+    response = httpx.Response(429, request=request, json={"message": "rate limited"})
+
+    with pytest.raises(InfrastructureError) as error:
+        TwelveDataMarketDataProvider._decode(response, operation="quote")
+
+    assert error.value.component == "market_data"
+    assert error.value.operation == "quote"
+    assert error.value.retryable is True
+
+
+def test_provider_error_payload_is_translated_to_infrastructure_error() -> None:
+    request = httpx.Request("GET", "https://api.twelvedata.com/time_series")
+    response = httpx.Response(
+        200,
+        request=request,
+        json={"status": "error", "message": "symbol unavailable"},
+    )
+
+    with pytest.raises(InfrastructureError, match="symbol unavailable") as error:
+        TwelveDataMarketDataProvider._decode(response, operation="time_series")
+
+    assert error.value.component == "market_data"
+    assert error.value.operation == "time_series"
+    assert error.value.retryable is True
 
 
 def test_duplicate_assets_are_fetched_once_per_quote_request(monkeypatch: pytest.MonkeyPatch) -> None:
