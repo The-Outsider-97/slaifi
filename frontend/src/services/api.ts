@@ -30,19 +30,13 @@ async function responseError(
       detail?: string;
       error?: string;
     };
-
-    detail =
-      body.detail ??
-      body.error ??
-      "";
+    detail = body.detail ?? body.error ?? "";
   } catch {
     detail = "";
   }
 
   return new Error(
-    `${path} request failed with status ${
-      response.status
-    }${detail ? `: ${detail}` : ""}`,
+    `${path} request failed with status ${response.status}${detail ? `: ${detail}` : ""}`,
   );
 }
 
@@ -50,28 +44,17 @@ async function apiRequest<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const response = await fetch(
-    `${API_BASE_URL}${path}`,
-    {
-      ...init,
-      headers: {
-        Accept: "application/json",
-        ...(init.body
-          ? {
-              "Content-Type":
-                "application/json",
-            }
-          : {}),
-        ...init.headers,
-      },
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers: {
+      Accept: "application/json",
+      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...init.headers,
     },
-  );
+  });
 
   if (!response.ok) {
-    throw await responseError(
-      response,
-      path,
-    );
+    throw await responseError(response, path);
   }
 
   return (await response.json()) as T;
@@ -81,26 +64,20 @@ async function apiRequestNullable<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T | null> {
-  const response = await fetch(
-    `${API_BASE_URL}${path}`,
-    {
-      ...init,
-      headers: {
-        Accept: "application/json",
-        ...init.headers,
-      },
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers: {
+      Accept: "application/json",
+      ...init.headers,
     },
-  );
+  });
 
   if (response.status === 204) {
     return null;
   }
 
   if (!response.ok) {
-    throw await responseError(
-      response,
-      path,
-    );
+    throw await responseError(response, path);
   }
 
   return (await response.json()) as T;
@@ -109,10 +86,7 @@ async function apiRequestNullable<T>(
 export function fetchMarketOverview(
   signal?: AbortSignal,
 ): Promise<MarketOverview> {
-  return apiRequest<MarketOverview>(
-    "/api/v1/market/overview",
-    { signal },
-  );
+  return apiRequest<MarketOverview>("/api/v1/market/overview", { signal });
 }
 
 export function fetchMarketHistory(
@@ -127,9 +101,7 @@ export function fetchMarketHistory(
   });
 
   return apiRequest<MarketHistory>(
-    `/api/v1/market/history/${
-      encodeURIComponent(symbol)
-    }?${query.toString()}`,
+    `/api/v1/market/history/${encodeURIComponent(symbol)}?${query.toString()}`,
     { signal },
   );
 }
@@ -137,35 +109,30 @@ export function fetchMarketHistory(
 export function fetchSlaiStatus(
   signal?: AbortSignal,
 ): Promise<SlaiRuntimeStatus> {
-  return apiRequest<SlaiRuntimeStatus>(
-    "/api/v1/integrations/slai",
-    { signal },
-  );
+  return apiRequest<SlaiRuntimeStatus>("/api/v1/integrations/slai", { signal });
 }
 
 export function analyzeMarket(
   payload: MarketAnalysisRequest,
   requestId: string,
 ): Promise<MarketAnalysisResponse> {
-  return apiRequest<MarketAnalysisResponse>(
-    "/api/v1/analysis/market",
-    {
-      method: "POST",
-      headers: {
-        "X-Request-ID": requestId,
-      },
-      body: JSON.stringify(payload),
-    },
-  );
+  return apiRequest<MarketAnalysisResponse>("/api/v1/analysis/market", {
+    method: "POST",
+    headers: { "X-Request-ID": requestId },
+    body: JSON.stringify(payload),
+  });
 }
 
 export function fetchCurrentPortfolio(
+  includeReasoning = false,
   signal?: AbortSignal,
 ): Promise<PortfolioAnalysisResponse | null> {
-  return apiRequestNullable<
-    PortfolioAnalysisResponse
-  >(
-    "/api/v1/portfolio/current",
+  const query = new URLSearchParams({
+    include_reasoning: String(includeReasoning),
+  });
+
+  return apiRequestNullable<PortfolioAnalysisResponse>(
+    `/api/v1/portfolio/current?${query.toString()}`,
     { signal },
   );
 }
