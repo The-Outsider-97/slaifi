@@ -1,6 +1,6 @@
 # SLAI Integration Boundary
 
-SLAIFI lives at `SLAI/application/slaifi/`. Full SLAI integration means integration through explicit runtime boundaries, not direct SLAI imports throughout financial code.
+SLAIFI lives at `SLAI/applications/slaifi/`. Full SLAI integration means using the wider runtime through explicit application contracts where it improves financial decision support, not importing agents throughout deterministic finance code.
 
 ## Authority and dependency direction
 
@@ -20,78 +20,119 @@ FinancialReasoner port
 SlaiFinancialReasoner
         ↓
 SLAI AgentFactory
-        ↓
-Reasoning Agent
+        ├── Reasoning Agent
+        └── Quality Agent
+               ↓
+         pass / warn / block
+               ↓
+       optional single refinement
         ↕
 SLAI SharedMemory
 ```
 
-Core, Domain and Engines never import SLAI agents or SharedMemory. API routes never import concrete integrations. The composition root wires the adapter.
+Core, Domain, and Engines never import SLAI agents or SharedMemory. API routes depend on application contracts/services, not concrete SLAI implementations. The composition root wires the adapter.
 
-## Actual SLAI v2.3 contracts
+## Responsibilities
 
-The adapter uses the real SLAI APIs:
+### Reasoning Agent
 
-- `AgentFactory.create(agent_type, shared_memory=...)` creates or retrieves the registered Reasoning Agent;
-- `ReasoningAgent.reason(problem, reasoning_type=None, context=None)` performs typed reasoning;
-- `AgentFactory.release(agent_type)` releases an adapter-owned agent;
-- SharedMemory `set(..., ttl=..., tags=...)` supports the SLAIFI transaction records;
-- Reasoning Agent runtime/health data is used for status rather than inferred from import success.
+The Reasoning Agent receives structured authoritative evidence produced by SLAIFI, including available market state, deterministic indicators, risk measurements, portfolio valuation/allocation, goal constraints, missing evidence, assumptions, and uncertainty. It may synthesize and explain that evidence but may not silently recalculate or replace authoritative values.
 
-## Logging ownership
+### Quality Agent
 
-SLAI owns process-level logging through `SLAI/logs/logger.py`. SLAIFI does not configure an independent root logger. Domain and deterministic Engines remain logging-free.
+When enabled, the Quality Agent reviews the reasoning artifact. The adapter treats its verdict as follows:
 
-## Lifecycle ownership
+```text
+pass
+→ expose interpretation with normal provenance
 
-When the wider SLAI host injects AgentFactory and SharedMemory, both must be supplied together and remain host-owned. SLAIFI does not release or close them.
+warn
+→ expose interpretation, mark result degraded/partial
 
-When the root SLAIFI launcher is running inside SLAI without injected objects, the adapter lazily obtains AgentFactory and SharedMemory and owns that integration lifecycle for its process. On shutdown it releases the Reasoning Agent through the Factory and closes only the memory object it obtained for that lifecycle.
+block
+→ run at most one controlled Reasoning Agent refinement
 
-## Versioned reasoning transaction
+block after refinement
+→ hide interpretation, preserve deterministic finance, return degraded/failed provenance
+```
 
-Every reasoning operation receives a unique correlation ID independent of portfolio IDs, ticker symbols, users, or request IDs.
+The Quality Agent may internally use SLAI workflow-control integrations such as Handler/Safety according to SLAI configuration. SLAIFI does not duplicate that general orchestration locally.
+
+### SharedMemory
+
+SharedMemory stores bounded request/result audit records with TTLs. It is coordination/provenance state, not durable market or portfolio persistence. Financial facts remain in their authoritative financial sources.
+
+### AgentFactory
+
+AgentFactory creates/reuses SLAI agents and provides lifecycle ownership. When the SLAI host injects AgentFactory and SharedMemory, SLAIFI does not release or close those host-owned resources. When SLAIFI lazily creates its own integration runtime, it releases only the agents/resources it owns.
+
+## Reasoning transaction
+
+Each reasoning operation receives a correlation ID that is independent from user IDs, portfolio IDs, ticker symbols, and caller request IDs.
 
 ```text
 slaifi:reasoning:request:<correlation_id>
 slaifi:reasoning:result:<correlation_id>
 ```
 
-The version-2 request envelope records source, operation, objective, authoritative evidence, constraints, assumptions, uncertainty, caller request ID, correlation ID, timestamp, requested agent and reasoning mode. The result envelope intentionally stores a compact audit summary instead of the Reasoning Agent's potentially large native output: agent/version, runtime result status, strategy, confidence, outcome, validation status, degraded flag, interpretation, warnings, IDs and completion timestamp.
+The version-3 request envelope records:
 
-Both records use the configured TTL and the tags `slaifi` and `financial_reasoning`. SharedMemory remains coordination/provenance context, not durable financial persistence.
+- source and operation;
+- objective;
+- authoritative evidence;
+- constraints;
+- assumptions;
+- uncertainty;
+- caller request ID;
+- correlation ID;
+- timestamp;
+- requested agent and reasoning mode.
 
-## Reasoning intelligence
+The result envelope records a compact audit summary: completion time, duration, runtime status, reasoning metadata, quality result, interpretation, warnings, agent identity/version, and correlation/request IDs. Raw private portfolio payloads are not written to logs.
 
-The Reasoning Agent receives structured evidence and an explicit authority contract. SLAIFI asks it, where the available evidence supports the topic, to reason across:
+## Guardrails
 
-1. market context;
-2. observed evidence;
-3. portfolio relevance;
-4. risk considerations;
-5. goal alignment;
-6. conflicting signals;
-7. uncertainty;
-8. conditions that could change the interpretation.
+The reasoning context explicitly states that:
 
-The guardrails state that Domain/Engine values are authoritative. The agent may explain and synthesize; it may not fabricate missing prices, holdings, goals or confidence, silently replace calculations, imply guaranteed returns, or convert illustrative analysis into an execution instruction.
+- Domain/Engine calculations are authoritative;
+- agents may not replace or silently recalculate authoritative values;
+- missing prices, holdings, goals, performance, or confidence may not be fabricated;
+- guaranteed returns may not be implied;
+- analysis may not be converted into a trade-execution instruction;
+- uncertainty and missing evidence must be reported.
 
-The public API exposes only safe provenance: status, interpretation, agent identity/version, strategy, confidence, outcome, validation status, degraded flag, correlation ID, request ID and warnings. Raw Reasoning Agent output and SharedMemory keys stay internal.
+The public API exposes safe reasoning provenance only: status, interpretation, agent identity/version, strategy, confidence when actually supplied, outcome, validation status, degraded state, correlation/request IDs, and warnings.
+
+## Why other SLAI agents are not invoked by default
+
+Total integration does not mean maximum agent count.
+
+- **Planning Agent:** current market and portfolio pipelines are short, known workflows with deterministic stages. Application orchestration is faster and more reliable than invoking a planner for every request. A planner becomes justified when evidence acquisition itself becomes conditional or multi-path.
+- **Execution Agent:** SLAIFI currently performs no trades or irreversible financial actions, so an execution agent would add no valid responsibility.
+- **Learning / Adaptive Agents:** they can alter strategy based on feedback, but SLAIFI currently lacks a validated outcome-feedback dataset suitable for learning. They are therefore not allowed to modify price history, trades, accounting, indicators, or deterministic risk. They should be introduced only around explicitly separated preferences/analysis strategy when trustworthy feedback exists.
+- **Evaluation Agent:** broad system evaluation is better suited to offline/release assessment. The Quality Agent is the narrower per-artifact check required in the online reasoning path.
+- **Observability Agent:** provider latency, request IDs, agent IDs, degraded state, cache behavior, and analysis duration are deterministic telemetry and are logged directly. An AI agent is not required to record those facts.
+- **Knowledge / Reader / Browser / Network Agents:** live financial truth comes from provider contracts, not agent browsing. These agents may later support contextual research, but their output must never substitute authoritative price/portfolio data.
+- **Alignment / Privacy / Safety Agents:** current SLAIFI output is non-executing decision support. Quality Agent workflow control may use configured SLAI Handler/Safety collaboration internally. Explicit additional stages should be added only when personalized actions or higher-risk execution capabilities exist.
 
 ## Failure semantics
 
 ```text
 SLAI available
-→ financial output + interpretation + provenance
+→ deterministic finance + quality-reviewed interpretation + provenance
 
-Reasoning result degraded
-→ financial output + degraded interpretation/warnings
+SLAI degraded
+→ deterministic finance + limited/degraded interpretation + warnings
 
-Runtime unavailable and optional
-→ financial output remains valid; reasoning status unavailable
+SLAI unavailable and optional
+→ deterministic finance remains valid; interpretation is absent
 
-Runtime unavailable and required
+SLAI required and unavailable
 → controlled ReasoningUnavailableError
 ```
 
-A healthy agent process does not automatically make an individual reasoning result healthy: Phase-3 `degraded` and validation status are reflected in the per-result SLAIFI status.
+A healthy agent process does not automatically make a reasoning artifact healthy. Per-result degradation, validation state, and Quality Agent verdicts determine what SLAIFI exposes.
+
+## Portfolio latency policy
+
+`GET /api/v1/portfolio/current` does not invoke SLAI by default. It returns valuation and other deterministic results first. SLAI reasoning is requested explicitly with `include_reasoning=true`, allowing the user-facing portfolio to remain responsive and useful during SLAI degradation or outage.
