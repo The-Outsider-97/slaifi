@@ -7,6 +7,7 @@ from logs.logger import get_logger
 from slaifi.application.contracts import ReasoningUnavailableError
 from slaifi.core.utils.errors import (
     CalculationError,
+    ConfigurationError,
     InfrastructureError,
     SlaifiError,
     ValidationError,
@@ -45,6 +46,18 @@ def install_exception_handlers(app: FastAPI) -> None:
                 "detail": exc.message,
                 "retryable": exc.retryable,
             },
+        )
+
+    @app.exception_handler(ConfigurationError)
+    async def configuration_error(_: Request, exc: ConfigurationError) -> JSONResponse:
+        logger.error(
+            "Runtime configuration failure | component=%s | operation=%s",
+            exc.component,
+            exc.operation,
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"error": "configuration_error", "detail": exc.message},
         )
 
     @app.exception_handler(ValidationError)
