@@ -11,7 +11,7 @@ from slaifi.core.utils.errors import ValidationError
 from slaifi.domain.assets import AssetId
 from slaifi.domain.goals import FinancialGoal
 from slaifi.domain.portfolio import Portfolio
-from slaifi.engines.portfolio import value_portfolio
+from slaifi.engines.portfolio import build_positions, value_portfolio
 from slaifi.engines.risk import calculate_risk_statistics
 
 
@@ -20,6 +20,16 @@ class AnalyzePortfolio:
 
     def __init__(self, reasoner: FinancialReasoner | None = None) -> None:
         self._reasoner = reasoner
+
+    @staticmethod
+    def required_price_assets(portfolio: Portfolio) -> tuple[AssetId, ...]:
+        """Return only currently open assets that require a market price."""
+
+        return tuple(
+            position.asset
+            for position in build_positions(portfolio.trades)
+            if position.quantity > 0
+        )
 
     def execute(
         self,
