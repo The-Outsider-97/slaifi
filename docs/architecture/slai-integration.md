@@ -37,9 +37,9 @@ Core, Domain and Engines never import SLAI agents or SharedMemory. API routes ne
 - **Reasoning Agent** interprets structured, already-calculated financial evidence. It does not own prices, portfolio accounting, indicators, risk arithmetic or goal arithmetic.
 - **Quality Agent** checks the generated reasoning artifact. A blocking verdict may trigger exactly one controlled refinement pass; there is no recursive agent loop.
 - **Safety Agent** reviews only the final generated interpretation. Raw financial evidence and private portfolio state are deliberately not copied into the Safety Agent payload. `allow`, `review`, and `block` are exposed as provenance; `block` suppresses the interpretation while leaving deterministic financial output intact.
-- **SharedMemory** stores short-lived request/result provenance under a configured TTL. It is coordination memory, not durable financial persistence.
+- **SharedMemory** stores short-lived request/result provenance under a configured TTL. SLAIFI persists an evidence fingerprint/shape manifest rather than a duplicate copy of raw financial evidence, and it records whether an interpretation existed rather than persisting the interpretation text. SharedMemory is coordination memory, not durable financial persistence.
 
-Planning, Learning, Adaptive, Evaluation and other SLAI agents are intentionally not invoked on every financial request. The current market/portfolio pipelines are fixed and deterministic, so a planner would add latency without changing the plan. Learning/Adaptive require an explicit, validated outcome/reward contract before they may influence future analytical strategy. Evaluation is not duplicated where the Quality Agent already owns artifact validation.
+Planning, Learning, Adaptive, Evaluation, Privacy and other SLAI agents are intentionally not invoked on every financial request. The current market/portfolio pipelines are fixed and deterministic, so a planner would add latency without changing the plan. Learning/Adaptive require an explicit, validated outcome/reward contract before they may influence future analytical strategy. Evaluation is not duplicated where the Quality Agent already owns artifact validation. Privacy is enforced first through data minimization at the integration boundary; invoking a Privacy Agent on authoritative numerical evidence would add a transformation stage where none is currently needed.
 
 ## Runtime contracts
 
@@ -63,7 +63,9 @@ slaifi:reasoning:request:<correlation_id>
 slaifi:reasoning:result:<correlation_id>
 ```
 
-The request envelope records source, operation, objective, authoritative evidence, constraints, assumptions, uncertainty, caller request ID, correlation ID, timestamp and requested reasoning mode. The result envelope records a compact audit summary: agent/version, status, reasoning metadata, Quality result, public-safe Safety result, interpretation, warnings, IDs and duration. Raw Safety/Quality internals are not exposed through the public API.
+The request envelope stores source, operation, objective, an evidence SHA-256 fingerprint plus top-level shape metadata, key names for constraints/assumptions/uncertainty, caller request ID, correlation ID, timestamp and requested reasoning mode. Raw financial evidence remains in the in-process Reasoning Agent call and is not duplicated into SLAIFI's SharedMemory record.
+
+The result envelope stores a compact audit summary: agent/version, status, reasoning metadata, Quality result, public-safe Safety result, whether an interpretation was produced, warnings, IDs and duration. The generated interpretation text itself is returned to the caller but is not duplicated into SLAIFI's SharedMemory record. Raw Safety/Quality internals are not exposed through the public API.
 
 Both records use the configured TTL and the tags `slaifi` and `financial_reasoning`.
 
