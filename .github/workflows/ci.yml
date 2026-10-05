@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, architecture-foundation]
+    branches: [main]
   pull_request:
     branches: [main]
 
@@ -20,20 +20,26 @@ jobs:
           cache: pip
       - name: Install backend
         run: python -m pip install -e ".[dev]"
+      - name: Compile
+        run: python -m compileall -q backend run_slaifi.py
       - name: Ruff
-        run: ruff check backend tests
+        run: ruff check backend tests run_slaifi.py
       - name: Mypy
         run: mypy backend
       - name: Tests
         run: pytest
-      - name: Import and startup smoke test
+      - name: Standalone API smoke
         run: |
           python - <<'PY'
           from fastapi.testclient import TestClient
-          from slaifi.main import app
+          from slaifi.core.config import Settings
+          from slaifi.main import create_app
+
+          app = create_app(Settings(environment="test", slai_enabled=False))
           with TestClient(app) as client:
               assert client.get('/health').json() == {'status': 'ok'}
               assert client.get('/api/v1/market/overview').status_code == 200
+              assert client.get('/api/v1/integrations/slai').json()['status'] == 'disabled'
           PY
 
   frontend:
@@ -49,6 +55,43 @@ jobs:
       - name: Typecheck
         working-directory: frontend
         run: npm run typecheck
+      - name: Tests
+        working-directory: frontend
+        run: npm test
       - name: Build
         working-directory: frontend
         run: npm run build
+
+  slai-host-integration:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}/_slai_host
+    steps:
+      - name: Checkout SLAIFI
+        uses: actions/checkout@v4
+      - name: Checkout SLAI host
+        uses: actions/checkout@v4
+        with:
+          repository: The-Outsider-97/SLAI
+          ref: main
+          path: _slai_host
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install SLAIFI
+        run: python -m pip install -e ".[dev]"
+      - name: SLAI adapter integration tests
+        run: pytest tests/integration/test_slai_reasoner_adapter.py tests/api/test_reasoning_provenance.py
+      - name: Root launcher smoke inside SLAI host
+        run: |
+          cp run_slaifi.py _slai_host/run_slaifi.py
+          cd /tmp
+          PYTHONPATH="${GITHUB_WORKSPACE}:${GITHUB_WORKSPACE}/backend:${GITHUB_WORKSPACE}/_slai_host" \
+            python -c "import run_slaifi; assert callable(run_slaifi.main)"
+      - name: Architecture and obsolete-reference guards
+        run: |
+          ! grep -R "slaifi.core.logging" backend tests
+          ! grep -R "engines._validation" backend tests
+          ! grep -R "SLAI/applications/slaifi" README.md docs backend tests run_slaifi.py
+          ! grep -R "sys.path.append\|sys.path.insert\|os.getcwd()\|Path.cwd()" backend run_slaifi.py
