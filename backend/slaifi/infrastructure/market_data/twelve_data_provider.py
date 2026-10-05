@@ -15,6 +15,20 @@ from slaifi.core.types import CurrencyCode
 from slaifi.domain.assets import AssetId
 from slaifi.domain.market.models import OHLCVBar, PriceQuote
 
+_INTERVAL_DELTAS: dict[str, timedelta] = {
+    "1min": timedelta(minutes=1),
+    "5min": timedelta(minutes=5),
+    "15min": timedelta(minutes=15),
+    "30min": timedelta(minutes=30),
+    "45min": timedelta(minutes=45),
+    "1h": timedelta(hours=1),
+    "2h": timedelta(hours=2),
+    "4h": timedelta(hours=4),
+    "8h": timedelta(hours=8),
+    "1day": timedelta(days=1),
+    "1week": timedelta(weeks=1),
+}
+
 
 class TwelveDataMarketDataProvider:
     """Translate Twelve Data responses into provider-neutral SLAIFI objects."""
@@ -56,25 +70,27 @@ class TwelveDataMarketDataProvider:
             return ()
 
         now = time.monotonic()
-        results: list[PriceQuote | None] = [None] * len(assets)
-        missing: list[tuple[int, AssetId]] = []
+        resolved: dict[AssetId, PriceQuote] = {}
+        missing: list[AssetId] = []
+        seen_missing: set[AssetId] = set()
 
-        for index, asset in enumerate(assets):
+        for asset in assets:
             cached = self._quote_cache.get(asset)
             if cached is not None and now - cached[0] <= self._quote_cache_ttl_seconds:
-                results[index] = cached[1]
-            else:
-                missing.append((index, asset))
+                resolved[asset] = cached[1]
+            elif asset not in seen_missing:
+                seen_missing.add(asset)
+                missing.append(asset)
 
         if missing:
-            fetched = await asyncio.gather(*(self._get_quote(asset) for _, asset in missing))
+            fetched = await asyncio.gather(*(self._get_quote(asset) for asset in missing))
             stored_at = time.monotonic()
-            for (index, asset), quote in zip(missing, fetched, strict=True):
-                results[index] = quote
+            for asset, quote in zip(missing, fetched, strict=True):
+                resolved[asset] = quote
                 if self._quote_cache_ttl_seconds > 0:
                     self._quote_cache[asset] = (stored_at, quote)
 
-        return tuple(quote for quote in results if quote is not None)
+        return tuple(resolved[asset] for asset in assets if asset in resolved)
 
     async def get_bars(
         self,
@@ -90,6 +106,7 @@ class TwelveDataMarketDataProvider:
             raise ValueError("end_at must be timezone-aware")
         if end_at <= start_at:
             raise ValueError("end_at must be later than start_at")
+        interval_delta = self._interval_delta(interval)
 
         normalized_start = start_at.astimezone(UTC)
         normalized_end = end_at.astimezone(UTC)
@@ -134,7 +151,7 @@ class TwelveDataMarketDataProvider:
                 OHLCVBar(
                     asset=asset,
                     start_at=opened_at,
-                    end_at=opened_at + timedelta(days=1),
+                    end_at=opened_at + interval_delta,
                     open=open_price,
                     high=high_price,
                     low=low_price,
@@ -182,6 +199,16 @@ class TwelveDataMarketDataProvider:
             source="twelvedata",
             change_rate=change_rate,
         )
+
+    @staticmethod
+    def _interval_delta(interval: str) -> timedelta:
+        try:
+            return _INTERVAL_DELTAS[interval]
+        except KeyError as exc:
+            raise ValueError(
+                f"unsupported market interval {interval!r}; supported intervals: "
+                f"{', '.join(_INTERVAL_DELTAS)}"
+            ) from exc
 
     @staticmethod
     def _decode(response: httpx.Response) -> dict[str, Any]:
