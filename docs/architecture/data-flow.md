@@ -1,51 +1,105 @@
 # Financial Data Flow
 
-## Target flow
+SLAIFI separates financial truth from AI interpretation. Provider data and portfolio ledgers become domain values first; deterministic engines calculate metrics; SLAI may then interpret the resulting evidence.
+
+## Market overview flow
 
 ```text
 External Market Provider
         ↓
-Provider adapter (infrastructure)
+MarketDataProvider adapter
         ↓
-Raw payload validation
+provider payload validation
         ↓
-Normalization into SLAIFI domain values
+normalized PriceQuote / OHLCVBar
         ↓
-Cache / persistent market snapshot
+bounded TTL cache at provider boundary
         ↓
-Feature Engine
+GetMarketOverview / GetMarketHistory
         ↓
-Technical / Fundamental / Sentiment / Regime analysis
+FastAPI market endpoints
         ↓
-Prediction Engine
+frontend API client
         ↓
-Risk Engine
+Market Overview UI
+```
+
+The mock provider is a development/test adapter. Production configuration rejects it. The frontend never converts mock values into apparently-live financial information.
+
+## Market analysis flow
+
+```text
+normalized historical OHLCV
         ↓
-Goal Engine
+AnalyzeMarketSeries
         ↓
-Strategy evaluation
+Feature + Technical + Risk engines
         ↓
-SLAI reasoning adapter
+structured authoritative evidence
         ↓
-Recommendation Engine
+FinancialReasoner contract
         ↓
-Application use case
+SLAI Reasoning Agent
+        ↓
+SLAI Quality Agent
+        ↓
+pass / warn / one bounded refinement / block
+        ↓
+public interpretation + provenance
         ↓
 API
         ↓
-Frontend / user
+frontend insight panel
 ```
 
-The initial vertical slice stops after normalization and application orchestration:
+The Reasoning Agent never receives authority to change source bars or deterministic calculations. A quality failure cannot cause a fabricated replacement value.
+
+## Portfolio flow
 
 ```text
-Mock provider → normalized PriceQuote → GetMarketOverview → FastAPI → Home dashboard
+configured actual portfolio ledger
+        ↓
+Portfolio domain validation
+        ↓
+build open positions
+        ↓
+fetch current prices only for open positions
+        ↓
+Portfolio Engine valuation / P&L / weights
+        ↓
+optional Risk + Goal engines when required evidence exists
+        ↓
+PortfolioAnalysisResult
+        ↓
+FastAPI
+        ↓
+frontend portfolio page
+```
+
+Normal portfolio loading stops here and does not invoke SLAI.
+
+When the user explicitly requests interpretation:
+
+```text
+PortfolioAnalysisResult
+        ↓
+structured evidence + constraints + uncertainty
+        ↓
+SLAI Reasoning + Quality workflow
+        ↓
+public interpretation/provenance
+        ↓
+existing deterministic portfolio remains visible
 ```
 
 ## Provenance rule
 
-Later stages must retain provenance instead of replacing earlier evidence. A recommendation record should reference the market snapshot, portfolio snapshot, goal, prediction, risk result, strategy evaluation, model versions, and SLAI reasoning version that produced it.
+Later stages append interpretation/provenance instead of replacing earlier evidence. Facts, derived deterministic metrics, AI interpretation, and any future learned preferences must remain distinguishable.
 
 ## Time semantics
 
-All authoritative timestamps are timezone-aware UTC values. Provider observation time, ingestion time, prediction time, and recommendation time are separate concepts and must not be silently collapsed.
+Authoritative timestamps are timezone-aware. Provider observation time, SLAIFI generation time, portfolio valuation time, reasoning completion time, and caller request/correlation IDs are distinct concepts and are not silently collapsed.
+
+## Caching rule
+
+Caching exists only at the market-provider infrastructure boundary and has explicit short TTLs. Cached financial observations retain their original `observed_at` timestamps. A cache hit does not pretend that the observation was refreshed.
