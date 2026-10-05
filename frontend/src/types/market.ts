@@ -33,7 +33,11 @@ export type MarketHistory = {
   bars: MarketBar[];
 };
 
-export type MarketRange = "1W" | "1M" | "3M" | "1Y";
+export type MarketRange =
+  | "1W"
+  | "1M"
+  | "3M"
+  | "1Y";
 
 export type SlaiRuntimeStatusValue =
   | "available"
@@ -99,7 +103,10 @@ export type MarketAnalysisResponse = {
     macd_signal: number | null;
     atr: number | null;
   };
-  features: Record<string, Array<number | null>>;
+  features: Record<
+    string,
+    Array<number | null>
+  >;
   reasoning: SlaiRuntimeStatus | null;
 };
 
