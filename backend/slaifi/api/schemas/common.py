@@ -70,6 +70,8 @@ class ReasoningResponse(BaseModel):
     outcome: str | None
     degraded: bool
     validation_status: str | None
+    safety_status: str | None
+    safety_agent: str | None
     warnings: list[str]
 
     @classmethod
@@ -86,5 +88,7 @@ class ReasoningResponse(BaseModel):
             outcome=result.outcome,
             degraded=result.degraded,
             validation_status=result.validation_status,
+            safety_status=result.safety_status,
+            safety_agent=result.safety_agent,
             warnings=list(result.warnings),
         )
