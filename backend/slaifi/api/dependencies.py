@@ -1,13 +1,14 @@
 """FastAPI dependency accessors for pre-wired application services."""
 
 from typing import Annotated, cast
-
 from fastapi import Header, Request
 
 from slaifi.application.analysis import AnalyzeMarketSeries, AnalyzePortfolio
 from slaifi.application.contracts import FinancialReasoner
 from slaifi.application.goals import EvaluateFinancialGoal
 from slaifi.application.market.get_overview import GetMarketOverview
+from slaifi.application.market import GetMarketHistory
+from slaifi.domain.market.provider import MarketDataProvider
 from slaifi.core.config import Settings
 from slaifi.core.utils.errors import ValidationError
 
@@ -27,6 +28,14 @@ def get_market_analysis_service(request: Request) -> AnalyzeMarketSeries:
     return cast(AnalyzeMarketSeries, _state_value(request, "market_analysis_service"))
 
 
+def get_market_history_service(request: Request) -> GetMarketHistory:
+    return cast(GetMarketHistory, _state_value(request, "market_history_service"))
+
+
+def get_market_data_provider(request: Request) -> MarketDataProvider:
+    return cast(MarketDataProvider, _state_value(request, "market_data_provider"))
+
+
 def get_portfolio_analysis_service(request: Request) -> AnalyzePortfolio:
     return cast(AnalyzePortfolio, _state_value(request, "portfolio_analysis_service"))
 
@@ -43,11 +52,8 @@ def get_runtime_settings(request: Request) -> Settings:
     return cast(Settings, _state_value(request, "settings"))
 
 
-def get_request_id(
-    x_request_id: Annotated[str | None, Header(alias="X-Request-ID")] = None,
-) -> str | None:
+def get_request_id(x_request_id: Annotated[str | None, Header(alias="X-Request-ID")] = None) -> str | None:
     """Validate caller trace metadata without using it as SLAI's unique correlation key."""
-
     if x_request_id is None:
         return None
     normalized = x_request_id.strip()
