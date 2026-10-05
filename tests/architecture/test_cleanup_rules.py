@@ -26,6 +26,7 @@ def test_operational_layers_use_canonical_slai_logger() -> None:
         PACKAGE_ROOT / "application" / "market" / "get_overview.py",
         PACKAGE_ROOT / "api" / "errors.py",
         PACKAGE_ROOT / "infrastructure" / "market_data" / "mock_provider.py",
+        PACKAGE_ROOT / "infrastructure" / "market_data" / "twelve_data_provider.py",
         PACKAGE_ROOT / "integrations" / "slai" / "reasoner.py",
     )
     for path in expected:
@@ -43,3 +44,17 @@ def test_backend_and_launcher_contain_no_path_hacks() -> None:
             if token in text:
                 violations.append(f"{path.relative_to(ROOT)} contains {token}")
     assert not violations, "\n".join(violations)
+
+
+def test_slai_application_package_uses_real_initializer() -> None:
+    assert (ROOT / "__init__.py").is_file()
+    assert not (ROOT / "___init__.py").exists()
+
+
+def test_production_frontend_contains_no_demo_market_dataset() -> None:
+    assert not (ROOT / "frontend" / "src" / "data" / "demoMarket.ts").exists()
+
+
+def test_ci_is_consolidated_to_one_authoritative_workflow() -> None:
+    workflows = sorted((ROOT / ".github" / "workflows").glob("*.yml"))
+    assert [path.name for path in workflows] == ["ci.yml"]
