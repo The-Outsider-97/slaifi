@@ -70,6 +70,8 @@ def create_app(
         quality_enabled=runtime_settings.slai_quality_enabled,
         quality_agent_type=runtime_settings.slai_quality_agent,
         refinement_enabled=runtime_settings.slai_quality_refinement_enabled,
+        safety_enabled=runtime_settings.slai_safety_enabled,
+        safety_agent_type=runtime_settings.slai_safety_agent,
         memory_ttl_seconds=runtime_settings.slai_memory_ttl_seconds,
         factory=slai_factory,
         shared_memory=slai_shared_memory,
@@ -127,11 +129,12 @@ def create_app(
     app.include_router(api_router)
 
     logger.info(
-        "SLAIFI composition complete | env=%s | market_provider=%s | slai_enabled=%s | slai_quality=%s",
+        "SLAIFI composition complete | env=%s | market_provider=%s | slai_enabled=%s | slai_quality=%s | slai_safety=%s",
         runtime_settings.environment,
         runtime_settings.market_provider,
         runtime_settings.slai_enabled,
         runtime_settings.slai_quality_enabled,
+        runtime_settings.slai_safety_enabled,
     )
     return app
 
