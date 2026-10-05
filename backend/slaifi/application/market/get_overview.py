@@ -1,4 +1,4 @@
-"""Application service for the Home market overview."""
+"""Application service for the Market Overview dashboard."""
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -14,22 +14,45 @@ logger = get_logger("SLAIFI Market Overview")
 
 @dataclass(frozen=True, slots=True)
 class MarketOverview:
-    """Provider-neutral market overview returned by the application layer."""
+    """Provider-neutral market overview."""
 
     quotes: tuple[PriceQuote, ...]
     generated_at: datetime
+    data_mode: str
 
 
 class GetMarketOverview:
-    """Orchestrate quote retrieval for the configured Home dashboard universe."""
+    """Retrieve the configured dashboard market universe."""
 
-    def __init__(self, provider: MarketDataProvider, assets: tuple[AssetRef, ...]) -> None:
+    def __init__(
+        self,
+        provider: MarketDataProvider,
+        assets: tuple[AssetRef, ...],
+    ) -> None:
         if not assets:
-            raise ValidationError("market overview requires at least one asset")
+            raise ValidationError(
+                "market overview requires at least one asset"
+            )
+
         self._provider = provider
         self._assets = assets
 
     async def execute(self) -> MarketOverview:
-        quotes = tuple(await self._provider.get_quotes(self._assets))
-        logger.debug("Market overview assembled from %d quote(s)", len(quotes))
-        return MarketOverview(quotes=quotes, generated_at=datetime.now(UTC))
+        quotes = tuple(
+            await self._provider.get_quotes(self._assets)
+        )
+
+        logger.debug(
+            "Market overview assembled from %d quote(s)",
+            len(quotes),
+        )
+
+        return MarketOverview(
+            quotes=quotes,
+            generated_at=datetime.now(UTC),
+            data_mode=getattr(
+                self._provider,
+                "data_mode",
+                "unknown",
+            ),
+        )
