@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { fetchCurrentPortfolio } from "../services/api";
+import { createRequestId, fetchCurrentPortfolio } from "../services/api";
 import type { PortfolioAnalysisResponse } from "../types/market";
 
 export function usePortfolioDashboard() {
@@ -33,7 +33,7 @@ export function usePortfolioDashboard() {
     setInsightError(null);
 
     try {
-      const result = await fetchCurrentPortfolio(true);
+      const result = await fetchCurrentPortfolio(true, undefined, createRequestId());
       if (result) {
         setPortfolio(result);
       } else {
