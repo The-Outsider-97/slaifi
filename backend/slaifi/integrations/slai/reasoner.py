@@ -36,12 +36,12 @@ _REASONING_FRAMEWORK = (
 
 
 class SlaiFinancialReasoner:
-    """Use factory-managed SLAI reasoning plus an optional bounded quality gate.
+    """Use SLAI reasoning with bounded quality and safety review.
 
-    SLAIFI remains the authority for financial facts and calculations. SLAI receives
+    SLAIFI remains authoritative for financial facts and calculations. SLAI receives
     structured evidence and may interpret it, but cannot replace deterministic values.
-    The optional Quality Agent reviews the reasoning artifact; at most one refinement
-    pass is allowed when the quality gate blocks the first interpretation.
+    Quality may trigger one refinement pass. Safety reviews only the final generated
+    interpretation, never the authoritative financial evidence or private portfolio data.
     """
 
     def __init__(
@@ -54,6 +54,8 @@ class SlaiFinancialReasoner:
         quality_enabled: bool = False,
         quality_agent_type: str = "quality",
         refinement_enabled: bool = True,
+        safety_enabled: bool = False,
+        safety_agent_type: str = "safety",
         memory_ttl_seconds: int = 900,
         factory: Any = None,
         shared_memory: Any = None,
@@ -69,6 +71,8 @@ class SlaiFinancialReasoner:
         self._quality_enabled = quality_enabled
         self._quality_agent_type = quality_agent_type
         self._refinement_enabled = refinement_enabled
+        self._safety_enabled = safety_enabled
+        self._safety_agent_type = safety_agent_type
         self._memory_ttl_seconds = memory_ttl_seconds
         self._factory = factory
         self._shared_memory = shared_memory
@@ -111,7 +115,7 @@ class SlaiFinancialReasoner:
         agent_version = _agent_version(reasoning_agent)
 
         envelope = {
-            "schema_version": 3,
+            "schema_version": 4,
             "source": "slaifi",
             "operation": request.operation,
             "objective": request.objective,
@@ -194,12 +198,27 @@ class SlaiFinancialReasoner:
             if quality_status == "block":
                 interpretation = None
 
+            safety_result = self._safety_gate(
+                interpretation=interpretation,
+                operation=request.operation,
+                correlation_id=correlation_id,
+            )
+            safety_status = _safety_verdict(safety_result) if safety_result is not None else None
+            if safety_status == "review":
+                warnings.append("SLAI safety gate requires review of the interpretation.")
+                if status is ReasoningStatus.AVAILABLE:
+                    status = ReasoningStatus.DEGRADED
+            elif safety_status == "block":
+                warnings.append("SLAI safety gate blocked the interpretation.")
+                status = ReasoningStatus.DEGRADED
+                interpretation = None
+
             duration_ms = max((time.perf_counter() - started_at) * 1000.0, 0.0)
             validation_status = _merged_validation_status(
-                metadata.get("validation_status"), quality_status
+                metadata.get("validation_status"), quality_status, safety_status
             )
             result_envelope = {
-                "schema_version": 3,
+                "schema_version": 4,
                 "source": "slaifi",
                 "operation": request.operation,
                 "request_id": request.request_id,
@@ -208,18 +227,21 @@ class SlaiFinancialReasoner:
                 "duration_ms": duration_ms,
                 "agent": {"type": self._agent_type, "version": agent_version},
                 "quality_agent": self._quality_agent_type if quality_result is not None else None,
+                "safety_agent": self._safety_agent_type if safety_result is not None else None,
                 "status": status.value,
                 "reasoning": metadata,
                 "quality": to_json_safe(quality_result) if quality_result is not None else None,
+                "safety": _public_safety_result(safety_result),
                 "interpretation": interpretation,
                 "warnings": warnings,
             }
             self._memory_set(result_key, result_envelope)
             logger.info(
-                "SLAI analysis completed | operation=%s | status=%s | quality=%s | duration_ms=%.2f",
+                "SLAI analysis completed | operation=%s | status=%s | quality=%s | safety=%s | duration_ms=%.2f",
                 request.operation,
                 status.value,
                 quality_status or "not_run",
+                safety_status or "not_run",
                 duration_ms,
             )
             return ReasoningResult(
@@ -236,6 +258,8 @@ class SlaiFinancialReasoner:
                 outcome=metadata["outcome"],
                 degraded=status is ReasoningStatus.DEGRADED or bool(metadata["degraded"]),
                 validation_status=validation_status,
+                safety_status=safety_status,
+                safety_agent=self._safety_agent_type if safety_result is not None else None,
                 warnings=tuple(dict.fromkeys(warnings)),
             )
         except Exception as exc:
@@ -248,7 +272,7 @@ class SlaiFinancialReasoner:
             self._memory_set(
                 result_key,
                 {
-                    "schema_version": 3,
+                    "schema_version": 4,
                     "source": "slaifi",
                     "operation": request.operation,
                     "request_id": request.request_id,
@@ -398,6 +422,37 @@ class SlaiFinancialReasoner:
             return {
                 "verdict": "warn",
                 "flags": ["quality_agent_unavailable"],
+                "error_type": type(exc).__name__,
+            }
+
+    def _safety_gate(
+        self,
+        *,
+        interpretation: str | None,
+        operation: str,
+        correlation_id: str,
+    ) -> dict[str, Any] | None:
+        if not self._safety_enabled or not interpretation:
+            return None
+        try:
+            safety_agent = self._agent(self._safety_agent_type)
+            result = safety_agent.perform_task(
+                {"text": interpretation},
+                context={
+                    "application": "slaifi",
+                    "purpose": "financial_interpretation_review",
+                    "operation": operation,
+                    "correlation_id": correlation_id,
+                    "financial_facts_included": False,
+                    "user_portfolio_data_included": False,
+                },
+            )
+            return dict(result) if isinstance(result, Mapping) else {"result": to_json_safe(result)}
+        except Exception as exc:
+            logger.warning("SLAI safety gate unavailable: %s", exc)
+            return {
+                "decision": "review",
+                "warnings": ["safety_agent_unavailable"],
                 "error_type": type(exc).__name__,
             }
 
@@ -621,15 +676,39 @@ def _quality_verdict(result: Mapping[str, Any]) -> str:
     return "warn"
 
 
+def _safety_verdict(result: Mapping[str, Any]) -> str:
+    raw = result.get("decision")
+    normalized = str(raw).strip().lower() if raw not in (None, "") else ""
+    if normalized in {"allow", "review", "block"}:
+        return normalized
+    is_safe = result.get("is_safe")
+    if is_safe is True:
+        return "allow"
+    if is_safe is False:
+        return "block"
+    return "review"
+
+
+def _public_safety_result(result: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    if result is None:
+        return None
+    return {
+        key: to_json_safe(result.get(key))
+        for key in ("decision", "risk_level", "is_safe", "warnings", "blockers", "error_type")
+        if key in result
+    }
+
+
 def _merged_validation_status(
     reasoning_status: Any,
     quality_verdict: str | None,
+    safety_verdict: str | None = None,
 ) -> str | None:
-    if quality_verdict == "block":
+    if quality_verdict == "block" or safety_verdict == "block":
         return "failed"
     if reasoning_status in {"failed", "unavailable"}:
         return str(reasoning_status)
-    if quality_verdict == "warn" or reasoning_status == "partial":
+    if quality_verdict == "warn" or safety_verdict == "review" or reasoning_status == "partial":
         return "partial"
     if quality_verdict == "pass":
         return "passed"
