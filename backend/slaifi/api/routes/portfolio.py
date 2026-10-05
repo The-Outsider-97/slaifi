@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import ValidationError as PydanticValidationError
 
 from slaifi.api.dependencies import (
@@ -19,6 +19,7 @@ from slaifi.api.dependencies import (
 from slaifi.api.schemas.analysis import PortfolioAnalysisResponse, PortfolioInput
 from slaifi.application.analysis import AnalyzePortfolio
 from slaifi.core.config import Settings
+from slaifi.core.utils.errors import ConfigurationError, InfrastructureError
 from slaifi.domain.assets import AssetId
 from slaifi.domain.market.provider import MarketDataProvider
 
@@ -53,37 +54,47 @@ async def current_portfolio(
 
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise HTTPException(
-            status_code=500,
-            detail="Configured portfolio source could not be read",
+    except OSError as exc:
+        raise InfrastructureError(
+            "Configured portfolio source could not be read",
+            component="portfolio_store",
+            operation="read",
+            cause=exc,
+            retryable=True,
+        ) from exc
+    except json.JSONDecodeError as exc:
+        raise ConfigurationError(
+            "Configured portfolio source is not valid JSON",
+            component="portfolio_store",
+            operation="decode",
+            cause=exc,
         ) from exc
 
     try:
         portfolio_input = PortfolioInput.model_validate(payload)
     except PydanticValidationError as exc:
-        raise HTTPException(
-            status_code=500,
-            detail="Configured portfolio source does not match the SLAIFI portfolio schema",
+        raise ConfigurationError(
+            "Configured portfolio source does not match the SLAIFI portfolio schema",
+            component="portfolio_store",
+            operation="validate",
+            cause=exc,
         ) from exc
 
     portfolio = portfolio_input.to_domain()
-    assets: list[AssetId] = []
-    seen: set[AssetId] = set()
-    for trade in portfolio.trades:
-        if trade.asset not in seen:
-            seen.add(trade.asset)
-            assets.append(trade.asset)
+    assets = service.required_price_assets(portfolio)
 
     prices: dict[AssetId, Decimal] = {}
     if assets:
-        quotes = await provider.get_quotes(tuple(assets))
+        quotes = await provider.get_quotes(assets)
         prices = {quote.asset: quote.price for quote in quotes}
         missing = [asset.display_symbol for asset in assets if asset not in prices]
         if missing:
-            raise HTTPException(
-                status_code=503,
-                detail=f"Current market prices unavailable for: {', '.join(missing)}",
+            raise InfrastructureError(
+                "Current market prices are unavailable for one or more open positions",
+                component="market_data",
+                operation="portfolio_quotes",
+                context={"missing_symbols": missing},
+                retryable=True,
             )
 
     result = service.execute(
