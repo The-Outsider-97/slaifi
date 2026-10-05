@@ -1,86 +1,68 @@
-import {
-  useCallback,
-  useEffect,
-  useState,
-} from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import {
-  fetchCurrentPortfolio,
-} from "../services/api";
-
-import type {
-  PortfolioAnalysisResponse,
-} from "../types/market";
+import { fetchCurrentPortfolio } from "../services/api";
+import type { PortfolioAnalysisResponse } from "../types/market";
 
 export function usePortfolioDashboard() {
-  const [
-    portfolio,
-    setPortfolio,
-  ] = useState<
-    PortfolioAnalysisResponse | null
-  >(null);
+  const [portfolio, setPortfolio] = useState<PortfolioAnalysisResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [insightLoading, setInsightLoading] = useState(false);
+  const [insightError, setInsightError] = useState<string | null>(null);
 
-  const [
-    loading,
-    setLoading,
-  ] = useState(true);
+  const load = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true);
+    setError(null);
 
-  const [
-    error,
-    setError,
-  ] = useState<string | null>(
-    null,
-  );
+    try {
+      const result = await fetchCurrentPortfolio(false, signal);
+      setPortfolio(result);
+      setInsightError(null);
+    } catch (reason: unknown) {
+      if (signal?.aborted) return;
+      setPortfolio(null);
+      setError(reason instanceof Error ? reason.message : "Unable to load portfolio");
+    } finally {
+      if (!signal?.aborted) setLoading(false);
+    }
+  }, []);
 
-  const load = useCallback(
-    async (
-      signal?: AbortSignal,
-    ) => {
-      setLoading(true);
-      setError(null);
+  const requestInsight = useCallback(async () => {
+    if (!portfolio) return;
+    setInsightLoading(true);
+    setInsightError(null);
 
-      try {
-        const result =
-          await fetchCurrentPortfolio(
-            signal,
-          );
-
+    try {
+      const result = await fetchCurrentPortfolio(true);
+      if (result) {
         setPortfolio(result);
-      } catch (reason: unknown) {
-        if (signal?.aborted) {
-          return;
-        }
-
-        setPortfolio(null);
-        setError(
-          reason instanceof Error
-            ? reason.message
-            : "Unable to load portfolio",
-        );
-      } finally {
-        if (!signal?.aborted) {
-          setLoading(false);
-        }
+      } else {
+        setInsightError("Portfolio state is no longer available.");
       }
-    },
-    [],
-  );
+    } catch (reason: unknown) {
+      setInsightError(
+        reason instanceof Error
+          ? reason.message
+          : "Unable to request SLAI portfolio reasoning",
+      );
+    } finally {
+      setInsightLoading(false);
+    }
+  }, [portfolio]);
 
   useEffect(() => {
-    const controller =
-      new AbortController();
-
+    const controller = new AbortController();
     void load(controller.signal);
-
-    return () =>
-      controller.abort();
+    return () => controller.abort();
   }, [load]);
 
   return {
     portfolio,
     loading,
     error,
-    refresh: () =>
-      void load(),
+    insightLoading,
+    insightError,
+    refresh: () => void load(),
+    requestInsight: () => void requestInsight(),
   };
 }
