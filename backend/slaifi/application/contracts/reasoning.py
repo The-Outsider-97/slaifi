@@ -49,6 +49,8 @@ class ReasoningResult:
     outcome: str | None = None
     degraded: bool = False
     validation_status: str | None = None
+    safety_status: str | None = None
+    safety_agent: str | None = None
     warnings: tuple[str, ...] = ()
 
 
