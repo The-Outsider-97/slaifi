@@ -41,6 +41,11 @@ class PortfolioMarketProvider:
         return ()
 
 
+class MissingQuoteProvider(PortfolioMarketProvider):
+    async def get_quotes(self, assets: Sequence[AssetId]) -> Sequence[PriceQuote]:
+        return ()
+
+
 class RecordingReasoner:
     def __init__(self) -> None:
         self.requests: list[ReasoningRequest] = []
@@ -157,3 +162,42 @@ def test_current_portfolio_returns_no_content_when_source_is_unconfigured() -> N
 
     assert response.status_code == 204
     assert response.content == b""
+
+
+def test_invalid_portfolio_json_is_a_configuration_failure(tmp_path: Path) -> None:
+    portfolio_file = tmp_path / "portfolio.json"
+    portfolio_file.write_text("{not valid json", encoding="utf-8")
+    app = create_app(
+        Settings(environment="test", portfolio_file=portfolio_file),
+        market_provider=PortfolioMarketProvider(),
+        financial_reasoner=RecordingReasoner(),
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/portfolio/current")
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "error": "configuration_error",
+        "detail": "Configured portfolio source is not valid JSON",
+    }
+
+
+def test_missing_open_position_quote_is_service_unavailable(tmp_path: Path) -> None:
+    portfolio_file = tmp_path / "portfolio.json"
+    write_portfolio(portfolio_file)
+    app = create_app(
+        Settings(environment="test", portfolio_file=portfolio_file),
+        market_provider=MissingQuoteProvider(),
+        financial_reasoner=RecordingReasoner(),
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/portfolio/current")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "error": "infrastructure_unavailable",
+        "detail": "Current market prices are unavailable for one or more open positions",
+        "retryable": True,
+    }
