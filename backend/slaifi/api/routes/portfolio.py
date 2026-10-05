@@ -21,6 +21,7 @@ from slaifi.application.analysis import AnalyzePortfolio
 from slaifi.core.config import Settings
 from slaifi.domain.assets import AssetId
 from slaifi.domain.market.provider import MarketDataProvider
+from slaifi.engines.portfolio import build_positions
 
 router = APIRouter(prefix="/api/v1/portfolio", tags=["portfolio"])
 
@@ -68,16 +69,14 @@ async def current_portfolio(
         ) from exc
 
     portfolio = portfolio_input.to_domain()
-    assets: list[AssetId] = []
-    seen: set[AssetId] = set()
-    for trade in portfolio.trades:
-        if trade.asset not in seen:
-            seen.add(trade.asset)
-            assets.append(trade.asset)
+    open_positions = build_positions(portfolio.trades)
+    assets: tuple[AssetId, ...] = tuple(
+        position.asset for position in open_positions if position.quantity > 0
+    )
 
     prices: dict[AssetId, Decimal] = {}
     if assets:
-        quotes = await provider.get_quotes(tuple(assets))
+        quotes = await provider.get_quotes(assets)
         prices = {quote.asset: quote.price for quote in quotes}
         missing = [asset.display_symbol for asset in assets if asset not in prices]
         if missing:
