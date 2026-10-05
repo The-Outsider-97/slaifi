@@ -1,45 +1,30 @@
 """SLAIFI backend composition root."""
 
+import inspect
+
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-import inspect
 from typing import Any
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from logs.logger import get_logger
 
 from slaifi import __version__
 from slaifi.api.errors import install_exception_handlers
 from slaifi.api.router import api_router
-from slaifi.application.analysis import (
-    AnalyzeMarketSeries,
-    AnalyzePortfolio,
-)
+from slaifi.application.analysis import AnalyzeMarketSeries, AnalyzePortfolio
 from slaifi.application.contracts import (
     FinancialReasoner,
     ReasoningStatus,
     ReasoningUnavailableError,
 )
-from slaifi.application.goals import (
-    EvaluateFinancialGoal,
-)
-from slaifi.application.market import (
-    GetMarketHistory,
-    GetMarketOverview,
-)
+from slaifi.application.goals import EvaluateFinancialGoal
+from slaifi.application.market import GetMarketHistory, GetMarketOverview
 from slaifi.core.config import Settings, get_settings
 from slaifi.domain.market.models import AssetRef
-from slaifi.domain.market.provider import (
-    MarketDataProvider,
-)
-from slaifi.infrastructure.market_data import (
-    MockMarketDataProvider,
-    TwelveDataMarketDataProvider,
-)
-from slaifi.integrations.slai import (
-    SlaiFinancialReasoner,
-)
+from slaifi.domain.market.provider import MarketDataProvider
+from slaifi.infrastructure.market_data import MockMarketDataProvider, TwelveDataMarketDataProvider
+from slaifi.integrations.slai import SlaiFinancialReasoner
+from logs.logger import get_logger
 
 logger = get_logger("SLAIFI Composition")
 
