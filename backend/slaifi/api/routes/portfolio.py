@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import ValidationError as PydanticValidationError
 
 from slaifi.api.dependencies import (
@@ -33,8 +33,17 @@ async def current_portfolio(
     settings: Annotated[Settings, Depends(get_runtime_settings)],
     provider: Annotated[MarketDataProvider, Depends(get_market_data_provider)],
     service: Annotated[AnalyzePortfolio, Depends(get_portfolio_analysis_service)],
+    include_reasoning: Annotated[
+        bool,
+        Query(
+            description=(
+                "Run the optional SLAI interpretation pipeline. False keeps the normal "
+                "portfolio dashboard deterministic and avoids unnecessary agent latency."
+            )
+        ),
+    ] = False,
 ) -> PortfolioAnalysisResponse | Response:
-    """Return the current configured portfolio valued with authoritative provider prices."""
+    """Return the current portfolio valued with authoritative provider prices."""
 
     path = settings.portfolio_file
     if path is None or not path.exists():
@@ -84,6 +93,8 @@ async def current_portfolio(
             "risk considerations, uncertainty, and relevant goal constraints using only "
             "the supplied authoritative portfolio evidence. Explicitly state missing "
             "evidence and do not invent prices, holdings, performance, or recommendations."
+            if include_reasoning
+            else None
         ),
     )
     return PortfolioAnalysisResponse.from_application(result)
