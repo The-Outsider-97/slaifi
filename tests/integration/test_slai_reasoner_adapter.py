@@ -201,13 +201,13 @@ def test_slai_adapter_uses_factory_shared_memory_and_authoritative_evidence() ->
     assert request_key.startswith("slaifi:reasoning:request:")
     assert result_key.startswith("slaifi:reasoning:result:")
     assert isinstance(request_payload, dict)
-    assert request_payload["schema_version"] == 3
+    assert request_payload["schema_version"] == 4
     assert request_payload["request_id"] == "client-42"
     assert request_payload["correlation_id"] == result.correlation_id
     assert request_payload["agent"]["type"] == "reasoning"
     assert request_kwargs["tags"] == ["slaifi", "financial_reasoning"]
     assert isinstance(result_payload, dict)
-    assert result_payload["schema_version"] == 3
+    assert result_payload["schema_version"] == 4
     assert result_payload["reasoning"]["strategy"] == "cause_effect"
     assert result_payload["status"] == "available"
     assert result_payload["duration_ms"] >= 0
