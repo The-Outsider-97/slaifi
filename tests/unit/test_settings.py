@@ -52,3 +52,13 @@ def test_bounded_cache_configuration_is_exposed() -> None:
     )
     assert settings.market_quote_cache_ttl_seconds == 3.0
     assert settings.market_history_cache_ttl_seconds == 45.0
+
+
+def test_slai_safety_gate_configuration_is_explicit() -> None:
+    settings = Settings(
+        environment="test",
+        slai_safety_enabled=False,
+        slai_safety_agent="custom_safety",
+    )
+    assert settings.slai_safety_enabled is False
+    assert settings.slai_safety_agent == "custom_safety"
