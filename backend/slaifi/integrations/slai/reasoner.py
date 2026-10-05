@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
 import math
@@ -115,14 +116,14 @@ class SlaiFinancialReasoner:
         agent_version = _agent_version(reasoning_agent)
 
         envelope = {
-            "schema_version": 4,
+            "schema_version": 5,
             "source": "slaifi",
             "operation": request.operation,
             "objective": request.objective,
-            "authoritative_evidence": evidence,
-            "constraints": constraints,
-            "assumptions": assumptions,
-            "uncertainty": uncertainty,
+            "evidence_manifest": _evidence_manifest(evidence),
+            "constraint_keys": _mapping_keys(constraints),
+            "assumption_keys": _mapping_keys(assumptions),
+            "uncertainty_keys": _mapping_keys(uncertainty),
             "request_id": request.request_id,
             "correlation_id": correlation_id,
             "created_at": started_iso,
@@ -203,7 +204,11 @@ class SlaiFinancialReasoner:
                 operation=request.operation,
                 correlation_id=correlation_id,
             )
-            safety_status = _safety_verdict(safety_result) if safety_result is not None else None
+            safety_status = (
+                _safety_verdict(safety_result)
+                if safety_result is not None
+                else None
+            )
             if safety_status == "review":
                 warnings.append("SLAI safety gate requires review of the interpretation.")
                 if status is ReasoningStatus.AVAILABLE:
@@ -215,10 +220,12 @@ class SlaiFinancialReasoner:
 
             duration_ms = max((time.perf_counter() - started_at) * 1000.0, 0.0)
             validation_status = _merged_validation_status(
-                metadata.get("validation_status"), quality_status, safety_status
+                metadata.get("validation_status"),
+                quality_status,
+                safety_status,
             )
             result_envelope = {
-                "schema_version": 4,
+                "schema_version": 5,
                 "source": "slaifi",
                 "operation": request.operation,
                 "request_id": request.request_id,
@@ -226,18 +233,25 @@ class SlaiFinancialReasoner:
                 "completed_at": datetime.now(UTC).isoformat(),
                 "duration_ms": duration_ms,
                 "agent": {"type": self._agent_type, "version": agent_version},
-                "quality_agent": self._quality_agent_type if quality_result is not None else None,
-                "safety_agent": self._safety_agent_type if safety_result is not None else None,
+                "quality_agent": (
+                    self._quality_agent_type if quality_result is not None else None
+                ),
+                "safety_agent": (
+                    self._safety_agent_type if safety_result is not None else None
+                ),
                 "status": status.value,
                 "reasoning": metadata,
-                "quality": to_json_safe(quality_result) if quality_result is not None else None,
+                "quality": (
+                    to_json_safe(quality_result) if quality_result is not None else None
+                ),
                 "safety": _public_safety_result(safety_result),
-                "interpretation": interpretation,
+                "interpretation_present": interpretation is not None,
                 "warnings": warnings,
             }
             self._memory_set(result_key, result_envelope)
             logger.info(
-                "SLAI analysis completed | operation=%s | status=%s | quality=%s | safety=%s | duration_ms=%.2f",
+                "SLAI analysis completed | operation=%s | status=%s | quality=%s | "
+                "safety=%s | duration_ms=%.2f",
                 request.operation,
                 status.value,
                 quality_status or "not_run",
@@ -259,7 +273,9 @@ class SlaiFinancialReasoner:
                 degraded=status is ReasoningStatus.DEGRADED or bool(metadata["degraded"]),
                 validation_status=validation_status,
                 safety_status=safety_status,
-                safety_agent=self._safety_agent_type if safety_result is not None else None,
+                safety_agent=(
+                    self._safety_agent_type if safety_result is not None else None
+                ),
                 warnings=tuple(dict.fromkeys(warnings)),
             )
         except Exception as exc:
@@ -272,7 +288,7 @@ class SlaiFinancialReasoner:
             self._memory_set(
                 result_key,
                 {
-                    "schema_version": 4,
+                    "schema_version": 5,
                     "source": "slaifi",
                     "operation": request.operation,
                     "request_id": request.request_id,
@@ -344,7 +360,9 @@ class SlaiFinancialReasoner:
                 factory_module = importlib.import_module("src.agents.agent_factory")
                 self._factory = factory_module.AgentFactory()
             if self._shared_memory is None:
-                memory_module = importlib.import_module("src.agents.collaborative.shared_memory")
+                memory_module = importlib.import_module(
+                    "src.agents.collaborative.shared_memory"
+                )
                 self._shared_memory = memory_module.SharedMemory()
             self._agents[self._agent_type] = self._factory.create(
                 self._agent_type,
@@ -363,7 +381,10 @@ class SlaiFinancialReasoner:
         if name not in self._agents:
             if self._factory is None or self._shared_memory is None:
                 raise ReasoningUnavailableError("SLAI runtime has not been initialized")
-            self._agents[name] = self._factory.create(name, shared_memory=self._shared_memory)
+            self._agents[name] = self._factory.create(
+                name,
+                shared_memory=self._shared_memory,
+            )
         return self._agents[name]
 
     def _invoke_reasoning(
@@ -393,12 +414,13 @@ class SlaiFinancialReasoner:
         try:
             quality_agent = self._agent(self._quality_agent_type)
             interpretation = _extract_interpretation(normalized)
+            metadata = _reasoning_metadata(normalized)
             record = {
                 "operation": request.operation,
                 "objective": request.objective,
                 "interpretation": interpretation,
-                "reasoning_strategy": _reasoning_metadata(normalized)["strategy"],
-                "confidence": _reasoning_metadata(normalized)["confidence"],
+                "reasoning_strategy": metadata["strategy"],
+                "confidence": metadata["confidence"],
                 "has_authoritative_evidence": bool(evidence),
                 "refinement": refinement,
             }
@@ -416,7 +438,9 @@ class SlaiFinancialReasoner:
                     },
                 }
             )
-            return dict(result) if isinstance(result, Mapping) else {"result": to_json_safe(result)}
+            if isinstance(result, Mapping):
+                return dict(result)
+            return {"result": to_json_safe(result)}
         except Exception as exc:
             logger.warning("SLAI quality gate unavailable: %s", exc)
             return {
@@ -447,7 +471,9 @@ class SlaiFinancialReasoner:
                     "user_portfolio_data_included": False,
                 },
             )
-            return dict(result) if isinstance(result, Mapping) else {"result": to_json_safe(result)}
+            if isinstance(result, Mapping):
+                return dict(result)
+            return {"result": to_json_safe(result)}
         except Exception as exc:
             logger.warning("SLAI safety gate unavailable: %s", exc)
             return {
@@ -538,21 +564,32 @@ class SlaiFinancialReasoner:
 
     def _diagnostic_payload(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
-            "agents": {name: _runtime_payload(agent) for name, agent in self._agents.items()}
+            "agents": {
+                name: _runtime_payload(agent)
+                for name, agent in self._agents.items()
+            }
         }
         health_check = getattr(self._factory, "health_check", None)
         if callable(health_check):
             try:
                 factory_health = health_check()
             except Exception as exc:
-                payload["factory"] = {"status": "degraded", "error_type": type(exc).__name__}
-            else:
-                if isinstance(factory_health, Mapping):
-                    payload["factory"] = {
-                        key: factory_health.get(key)
-                        for key in ("status", "health", "lifecycle", "registered_agents", "active_agents")
-                        if key in factory_health
-                    }
+                payload["factory"] = {
+                    "status": "degraded",
+                    "error_type": type(exc).__name__,
+                }
+            elif isinstance(factory_health, Mapping):
+                payload["factory"] = {
+                    key: factory_health.get(key)
+                    for key in (
+                        "status",
+                        "health",
+                        "lifecycle",
+                        "registered_agents",
+                        "active_agents",
+                    )
+                    if key in factory_health
+                }
         memory_health = getattr(self._shared_memory, "health_check", None)
         if callable(memory_health):
             try:
@@ -562,13 +599,12 @@ class SlaiFinancialReasoner:
                     "status": "degraded",
                     "error_type": type(exc).__name__,
                 }
-            else:
-                if isinstance(value, Mapping):
-                    payload["shared_memory"] = {
-                        key: value.get(key)
-                        for key in ("status", "health", "item_count", "closed")
-                        if key in value
-                    }
+            elif isinstance(value, Mapping):
+                payload["shared_memory"] = {
+                    key: value.get(key)
+                    for key in ("status", "health", "item_count", "closed")
+                    if key in value
+                }
         return payload
 
 
@@ -606,6 +642,27 @@ def _mapping_result(value: Any) -> dict[str, Any]:
     return {"result": safe}
 
 
+def _mapping_keys(value: Any) -> list[str]:
+    if not isinstance(value, Mapping):
+        return []
+    return sorted(str(key) for key in value)
+
+
+def _evidence_manifest(value: Any) -> dict[str, Any]:
+    serialized = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return {
+        "sha256": hashlib.sha256(serialized).hexdigest(),
+        "top_level_keys": _mapping_keys(value),
+        "byte_length": len(serialized),
+    }
+
+
 def _extract_interpretation(result: Mapping[str, Any]) -> str | None:
     for key in ("conclusion", "result", "response", "best_explanation", "output"):
         value = result.get(key)
@@ -626,25 +683,40 @@ def _reasoning_metadata(result: Mapping[str, Any]) -> dict[str, Any]:
     )
     confidence_value: float | None = None
     confidence = result.get("confidence")
-    raw_confidence = confidence.get("value") if isinstance(confidence, Mapping) else confidence
+    raw_confidence = (
+        confidence.get("value") if isinstance(confidence, Mapping) else confidence
+    )
     if isinstance(raw_confidence, (int, float)) and not isinstance(raw_confidence, bool):
         candidate = float(raw_confidence)
         if math.isfinite(candidate):
             confidence_value = candidate
     validation = result.get("validation")
     validation_mapping = validation if isinstance(validation, Mapping) else {}
-    validation_value = validation_mapping.get("validation_status", validation_mapping.get("status"))
+    validation_value = validation_mapping.get(
+        "validation_status",
+        validation_mapping.get("status"),
+    )
     return {
-        "strategy": str(strategy_value) if strategy_value not in (None, "") else None,
+        "strategy": (
+            str(strategy_value) if strategy_value not in (None, "") else None
+        ),
         "confidence": confidence_value,
-        "outcome": str(result["outcome"]) if result.get("outcome") not in (None, "") else None,
+        "outcome": (
+            str(result["outcome"])
+            if result.get("outcome") not in (None, "")
+            else None
+        ),
         "degraded": bool(result.get("degraded", False)),
         "validation_status": (
             str(validation_value).strip().lower()
             if validation_value not in (None, "")
             else None
         ),
-        "stop_reason": str(result["stop_reason"]) if result.get("stop_reason") not in (None, "") else None,
+        "stop_reason": (
+            str(result["stop_reason"])
+            if result.get("stop_reason") not in (None, "")
+            else None
+        ),
     }
 
 
@@ -657,7 +729,10 @@ def _reasoning_warnings(result: Mapping[str, Any]) -> tuple[str, ...]:
     if validation_status in {"failed", "partial", "unavailable"}:
         warnings.append(f"SLAI reasoning validation status: {validation_status}.")
     contradictions = result.get("contradictions")
-    if isinstance(contradictions, Sequence) and not isinstance(contradictions, (str, bytes)):
+    if isinstance(contradictions, Sequence) and not isinstance(
+        contradictions,
+        (str, bytes),
+    ):
         if contradictions:
             warnings.append(
                 f"SLAI reasoning reported {len(contradictions)} conflicting signal(s)."
@@ -694,7 +769,14 @@ def _public_safety_result(result: Mapping[str, Any] | None) -> dict[str, Any] | 
         return None
     return {
         key: to_json_safe(result.get(key))
-        for key in ("decision", "risk_level", "is_safe", "warnings", "blockers", "error_type")
+        for key in (
+            "decision",
+            "risk_level",
+            "is_safe",
+            "warnings",
+            "blockers",
+            "error_type",
+        )
         if key in result
     }
 
@@ -708,7 +790,11 @@ def _merged_validation_status(
         return "failed"
     if reasoning_status in {"failed", "unavailable"}:
         return str(reasoning_status)
-    if quality_verdict == "warn" or safety_verdict == "review" or reasoning_status == "partial":
+    if (
+        quality_verdict == "warn"
+        or safety_verdict == "review"
+        or reasoning_status == "partial"
+    ):
         return "partial"
     if quality_verdict == "pass":
         return "passed"
