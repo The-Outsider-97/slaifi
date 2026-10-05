@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 
 from slaifi.core.types import CurrencyCode
+from slaifi.core.utils.errors import InfrastructureError
 from slaifi.domain.assets import AssetId
 from slaifi.domain.market.models import OHLCVBar, PriceQuote
 
@@ -116,19 +117,29 @@ class TwelveDataMarketDataProvider:
         if cached is not None and now - cached[0] <= self._history_cache_ttl_seconds:
             return cached[1]
 
-        response = await self._client.get(
-            "/time_series",
-            params={
-                "symbol": asset.symbol,
-                "interval": interval,
-                "start_date": normalized_start.strftime("%Y-%m-%d"),
-                "end_date": normalized_end.strftime("%Y-%m-%d"),
-                "order": "ASC",
-                "timezone": "UTC",
-                "apikey": self._api_key,
-            },
-        )
-        payload = self._decode(response)
+        try:
+            response = await self._client.get(
+                "/time_series",
+                params={
+                    "symbol": asset.symbol,
+                    "interval": interval,
+                    "start_date": normalized_start.strftime("%Y-%m-%d"),
+                    "end_date": normalized_end.strftime("%Y-%m-%d"),
+                    "order": "ASC",
+                    "timezone": "UTC",
+                    "apikey": self._api_key,
+                },
+            )
+        except httpx.RequestError as exc:
+            raise InfrastructureError(
+                "Market-data provider request failed",
+                component="market_data",
+                operation="time_series",
+                cause=exc,
+                retryable=True,
+            ) from exc
+
+        payload = self._decode(response, operation="time_series")
         raw_values = payload.get("values")
         if not isinstance(raw_values, list):
             return ()
@@ -166,39 +177,58 @@ class TwelveDataMarketDataProvider:
         return normalized_bars
 
     async def _get_quote(self, asset: AssetId) -> PriceQuote:
-        response = await self._client.get(
-            "/quote",
-            params={"symbol": asset.symbol, "apikey": self._api_key},
-        )
-        payload = self._decode(response)
-        price = self._decimal(payload.get("close"))
+        try:
+            response = await self._client.get(
+                "/quote",
+                params={"symbol": asset.symbol, "apikey": self._api_key},
+            )
+        except httpx.RequestError as exc:
+            raise InfrastructureError(
+                "Market-data provider request failed",
+                component="market_data",
+                operation="quote",
+                cause=exc,
+                retryable=True,
+            ) from exc
 
-        percent_change_raw = payload.get("percent_change")
-        change_rate: float | None = None
-        if percent_change_raw not in (None, ""):
-            change_rate = float(self._decimal(percent_change_raw) / Decimal("100"))
+        payload = self._decode(response, operation="quote")
+        try:
+            price = self._decimal(payload.get("close"))
 
-        currency_raw = payload.get("currency")
-        if not currency_raw and asset.currency is not None:
-            currency_raw = str(asset.currency)
-        if not currency_raw:
-            currency_raw = "USD"
+            percent_change_raw = payload.get("percent_change")
+            change_rate: float | None = None
+            if percent_change_raw not in (None, ""):
+                change_rate = float(self._decimal(percent_change_raw) / Decimal("100"))
 
-        timestamp_raw = payload.get("last_quote_at") or payload.get("timestamp")
-        observed_at = (
-            datetime.fromtimestamp(int(timestamp_raw), tz=UTC)
-            if timestamp_raw is not None
-            else datetime.now(UTC)
-        )
+            currency_raw = payload.get("currency")
+            if not currency_raw and asset.currency is not None:
+                currency_raw = str(asset.currency)
+            if not currency_raw:
+                currency_raw = "USD"
 
-        return PriceQuote(
-            asset=asset,
-            price=price,
-            currency=CurrencyCode(str(currency_raw).upper()),
-            observed_at=observed_at,
-            source="twelvedata",
-            change_rate=change_rate,
-        )
+            timestamp_raw = payload.get("last_quote_at") or payload.get("timestamp")
+            observed_at = (
+                datetime.fromtimestamp(int(timestamp_raw), tz=UTC)
+                if timestamp_raw is not None
+                else datetime.now(UTC)
+            )
+
+            return PriceQuote(
+                asset=asset,
+                price=price,
+                currency=CurrencyCode(str(currency_raw).upper()),
+                observed_at=observed_at,
+                source="twelvedata",
+                change_rate=change_rate,
+            )
+        except (TypeError, ValueError, InvalidOperation, OverflowError) as exc:
+            raise InfrastructureError(
+                "Market-data provider returned an invalid quote payload",
+                component="market_data",
+                operation="quote",
+                cause=exc,
+                retryable=False,
+            ) from exc
 
     @staticmethod
     def _interval_delta(interval: str) -> timedelta:
@@ -211,13 +241,45 @@ class TwelveDataMarketDataProvider:
             ) from exc
 
     @staticmethod
-    def _decode(response: httpx.Response) -> dict[str, Any]:
-        response.raise_for_status()
-        payload = response.json()
+    def _decode(response: httpx.Response, *, operation: str) -> dict[str, Any]:
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise InfrastructureError(
+                "Market-data provider returned an HTTP error",
+                component="market_data",
+                operation=operation,
+                cause=exc,
+                context={"status_code": response.status_code},
+                retryable=response.status_code >= 500 or response.status_code == 429,
+            ) from exc
+
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise InfrastructureError(
+                "Market-data provider returned invalid JSON",
+                component="market_data",
+                operation=operation,
+                cause=exc,
+                retryable=False,
+            ) from exc
+
         if not isinstance(payload, dict):
-            raise RuntimeError("market provider returned an invalid response object")
+            raise InfrastructureError(
+                "Market-data provider returned an invalid response object",
+                component="market_data",
+                operation=operation,
+                retryable=False,
+            )
         if payload.get("status") == "error":
-            raise RuntimeError(str(payload.get("message") or "market provider error"))
+            provider_message = str(payload.get("message") or "market provider error")
+            raise InfrastructureError(
+                provider_message,
+                component="market_data",
+                operation=operation,
+                retryable=True,
+            )
         return payload
 
     @staticmethod
