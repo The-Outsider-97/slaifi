@@ -1,70 +1,195 @@
-import type { MarketAnalysisResponse, SlaiRuntimeStatus } from "../types/market";
+import type {
+  MarketAnalysisResponse,
+  SlaiRuntimeStatus,
+} from "../types/market";
 
-type SlaiInsightCardProps = {
+type Props = {
   runtime: SlaiRuntimeStatus | null;
   analysis: MarketAnalysisResponse | null;
   loading: boolean;
   error: string | null;
+  hasEvidence: boolean;
   onExplore: () => void;
 };
 
-function runtimeLabel(runtime: SlaiRuntimeStatus | null, statusOverride?: string) {
-  if (!runtime) return "SLAI runtime status unavailable";
-  const agent = runtime.agent ? runtime.agent.replace(/_/g, " ") : "Reasoning Agent";
-  const version = runtime.agent_version ? ` v${runtime.agent_version}` : "";
-  return `SLAI analysis · illustrative data · ${agent}${version} · ${statusOverride ?? runtime.status}`;
-}
+export function SlaiInsightCard({
+  runtime,
+  analysis,
+  loading,
+  error,
+  hasEvidence,
+  onExplore,
+}: Props) {
+  const reasoning =
+    analysis?.reasoning ?? null;
 
-export function SlaiInsightCard({ runtime, analysis, loading, error, onExplore }: SlaiInsightCardProps) {
-  const reasoning = analysis?.reasoning ?? null;
-  const connected = runtime?.status === "available" || runtime?.status === "degraded";
-  const interpretation = reasoning?.interpretation?.trim();
+  const connected =
+    runtime?.status === "available" ||
+    runtime?.status === "degraded";
+
+  const interpretation =
+    reasoning?.interpretation?.trim() ??
+    null;
+
+  const agent =
+    reasoning?.agent ??
+    runtime?.agent ??
+    null;
+
+  const confidence =
+    reasoning?.confidence ??
+    null;
 
   return (
-    <aside className="panel insight-panel" aria-labelledby="slai-insight-title">
+    <aside
+      className="panel insight-panel"
+      aria-labelledby="slai-insight-title"
+    >
       <div className="insight-header">
-        <span className="insight-label">✧ SLAI INSIGHT</span>
-        <span>01 / 03</span>
+        <span className="insight-label">
+          ✧ SLAI INSIGHT
+        </span>
+
+        <span>
+          {reasoning
+            ? reasoning.status
+            : runtime?.status ??
+              "unavailable"}
+        </span>
       </div>
-      <span className="insight-spark" aria-hidden="true">✧</span>
-      <span className="section-kicker">THE BIG PICTURE</span>
+
+      <span
+        className="insight-spark"
+        aria-hidden="true"
+      >
+        ✧
+      </span>
+
+      <span className="section-kicker">
+        THE BIG PICTURE
+      </span>
+
       <h2 id="slai-insight-title">
-        {interpretation ? "Evidence, in context." : <>Stay invested.<br />Stay selective.</>}
+        {interpretation
+          ? "Evidence, in context."
+          : connected
+            ? "Ready to analyse."
+            : "SLAI unavailable."}
       </h2>
-      <p className={interpretation ? "insight-copy insight-copy--live" : "insight-copy"}>
-        {interpretation ?? "This illustrative scenario favors a measured approach: maintain diversification and avoid chasing recent momentum."}
+
+      <p
+        className={
+          interpretation
+            ? "insight-copy insight-copy--live"
+            : "insight-copy"
+        }
+      >
+        {interpretation ??
+          (connected
+            ? hasEvidence
+              ? "Run SLAI reasoning against the current market series."
+              : "Real historical market evidence is required before analysis can run."
+            : "Core market data remains available without SLAI interpretation.")}
       </p>
 
       <div className="insight-meta">
-        {reasoning ? (
-          <>
-            <div><span>Reasoning type</span><strong>{reasoning.reasoning_strategy ?? "Contextual"}</strong></div>
-            <div><span>Runtime state</span><strong>{reasoning.status}</strong></div>
-          </>
-        ) : (
-          <>
-            <div><span>Example stance</span><strong>Balanced</strong></div>
-            <div><span>Risk level</span><strong>Moderate</strong></div>
-          </>
-        )}
+        <div>
+          <span>Runtime</span>
+          <strong>
+            {reasoning?.status ??
+              runtime?.status ??
+              "Unavailable"}
+          </strong>
+        </div>
+
+        <div>
+          <span>Confidence</span>
+          <strong>
+            {confidence === null
+              ? "Not reported"
+              : `${(
+                  confidence *
+                  100
+                ).toFixed(0)}%`}
+          </strong>
+        </div>
+
+        {reasoning?.reasoning_strategy ? (
+          <div>
+            <span>
+              Strategy
+            </span>
+            <strong>
+              {
+                reasoning.reasoning_strategy
+              }
+            </strong>
+          </div>
+        ) : null}
+
+        {agent ? (
+          <div>
+            <span>Agent</span>
+            <strong>
+              {agent.replace(
+                /_/g,
+                " ",
+              )}
+            </strong>
+          </div>
+        ) : null}
       </div>
 
-      {error ? <p className="insight-error" role="alert">{error}</p> : null}
+      {error ? (
+        <p
+          className="insight-error"
+          role="alert"
+        >
+          {error}
+        </p>
+      ) : null}
+
       <button
         className="primary-cta"
         type="button"
-        disabled={!connected || loading}
+        disabled={
+          !connected ||
+          !hasEvidence ||
+          loading
+        }
         onClick={onExplore}
       >
-        <span>{loading ? "Reasoning…" : reasoning ? "Refresh the reasoning" : "Explore the reasoning"}</span>
-        <span aria-hidden="true">↗</span>
+        <span>
+          {loading
+            ? "Reasoning…"
+            : reasoning
+              ? "Refresh reasoning"
+              : "Explore the reasoning"}
+        </span>
+
+        <span aria-hidden="true">
+          ↗
+        </span>
       </button>
-      <div className={`runtime-provenance runtime-provenance--${reasoning?.status ?? runtime?.status ?? "unknown"}`}>
+
+      <div
+        className={
+          `runtime-provenance ` +
+          `runtime-provenance--${
+            reasoning?.status ??
+            runtime?.status ??
+            "unknown"
+          }`
+        }
+      >
         {reasoning
-          ? runtimeLabel(runtime, reasoning.status)
+          ? `SLAI analysis · ${
+              agent ??
+              "reasoning agent"
+            }`
           : connected
-            ? runtimeLabel(runtime)
-            : `Illustrative analysis · SLAI engine ${runtime?.status ?? "not connected"}`}
+            ? "SLAI connected · no analysis generated yet"
+            : "SLAI reasoning currently unavailable"}
       </div>
     </aside>
   );
