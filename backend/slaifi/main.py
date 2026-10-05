@@ -129,7 +129,8 @@ def create_app(
     app.include_router(api_router)
 
     logger.info(
-        "SLAIFI composition complete | env=%s | market_provider=%s | slai_enabled=%s | slai_quality=%s | slai_safety=%s",
+        "SLAIFI composition complete | env=%s | market_provider=%s | "
+        "slai_enabled=%s | slai_quality=%s | slai_safety=%s",
         runtime_settings.environment,
         runtime_settings.market_provider,
         runtime_settings.slai_enabled,
