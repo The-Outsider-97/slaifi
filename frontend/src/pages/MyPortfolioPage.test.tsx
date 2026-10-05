@@ -44,6 +44,8 @@ const reasonedPortfolio = {
     outcome: "supported",
     degraded: false,
     validation_status: "passed",
+    safety_status: "allow",
+    safety_agent: "safety",
     warnings: [],
   },
 };
@@ -106,7 +108,39 @@ describe("MyPortfolioPage", () => {
     expect(await screen.findByText("What stands out.")).toBeInTheDocument();
     expect(screen.getByText(/concentrated in a single supplied position/i)).toBeInTheDocument();
     expect(screen.getByText("passed")).toBeInTheDocument();
+    expect(screen.getByText("allow")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows degraded SLAI warnings without hiding deterministic portfolio data", async () => {
+    const degradedPortfolio = {
+      ...reasonedPortfolio,
+      reasoning: {
+        ...reasonedPortfolio.reasoning,
+        status: "degraded",
+        degraded: true,
+        validation_status: "partial",
+        safety_status: "review",
+        warnings: ["SLAI safety gate requires review of the interpretation."],
+      },
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) =>
+      jsonResponse(
+        String(input).includes("include_reasoning=true")
+          ? degradedPortfolio
+          : deterministicPortfolio,
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const user = userEvent.setup();
+    render(<MyPortfolioPage />);
+    await screen.findByText("$1,040.00");
+    await user.click(screen.getByRole("button", { name: /Explore the reasoning/i }));
+
+    expect(await screen.findByText("review")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/safety gate requires review/i);
+    expect(screen.getByText("$1,040.00")).toBeInTheDocument();
   });
 
   it("renders a truthful empty state for an unconfigured portfolio", async () => {
