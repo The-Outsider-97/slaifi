@@ -125,6 +125,52 @@ def test_portfolio_analysis_composes_valuation_risk_goal_and_reasoning() -> None
     assert reasoner.requests[0].request_id == "portfolio-request"
 
 
+def test_portfolio_required_prices_include_only_open_positions() -> None:
+    closed_asset = AssetId("CLOSED", currency="USD")
+    open_asset = AssetId("OPEN", currency="USD")
+    portfolio = Portfolio(
+        portfolio_id="p1",
+        name="Primary",
+        base_currency="USD",
+        trades=(
+            Trade(
+                trade_id="closed-buy",
+                asset=closed_asset,
+                side=TradeSide.BUY,
+                quantity=Decimal("2"),
+                unit_price=Decimal("10"),
+                fee=Decimal("0"),
+                occurred_at=datetime(2026, 1, 1, tzinfo=UTC),
+                currency="USD",
+            ),
+            Trade(
+                trade_id="closed-sell",
+                asset=closed_asset,
+                side=TradeSide.SELL,
+                quantity=Decimal("2"),
+                unit_price=Decimal("12"),
+                fee=Decimal("0"),
+                occurred_at=datetime(2026, 1, 2, tzinfo=UTC),
+                currency="USD",
+            ),
+            Trade(
+                trade_id="open-buy",
+                asset=open_asset,
+                side=TradeSide.BUY,
+                quantity=Decimal("1"),
+                unit_price=Decimal("20"),
+                fee=Decimal("0"),
+                occurred_at=datetime(2026, 1, 3, tzinfo=UTC),
+                currency="USD",
+            ),
+        ),
+    )
+
+    required = AnalyzePortfolio.required_price_assets(portfolio)
+
+    assert required == (open_asset,)
+
+
 def test_goal_service_reuses_authoritative_goal_arithmetic_before_reasoning() -> None:
     reasoner = RecordingReasoner()
     goal = FinancialGoal(
