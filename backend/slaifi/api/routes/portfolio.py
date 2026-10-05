@@ -13,6 +13,7 @@ from pydantic import ValidationError as PydanticValidationError
 from slaifi.api.dependencies import (
     get_market_data_provider,
     get_portfolio_analysis_service,
+    get_request_id,
     get_runtime_settings,
 )
 from slaifi.api.schemas.analysis import PortfolioAnalysisResponse, PortfolioInput
@@ -33,6 +34,7 @@ async def current_portfolio(
     settings: Annotated[Settings, Depends(get_runtime_settings)],
     provider: Annotated[MarketDataProvider, Depends(get_market_data_provider)],
     service: Annotated[AnalyzePortfolio, Depends(get_portfolio_analysis_service)],
+    request_id: Annotated[str | None, Depends(get_request_id)],
     include_reasoning: Annotated[
         bool,
         Query(
@@ -96,5 +98,6 @@ async def current_portfolio(
             if include_reasoning
             else None
         ),
+        request_id=request_id,
     )
     return PortfolioAnalysisResponse.from_application(result)
