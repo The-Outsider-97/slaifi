@@ -161,6 +161,304 @@ html[data-theme="light"] .topbar { background: rgba(242,243,242,.94); }
 
 .sidebar-scrim { display: none; }
 
+/* =========================================================
+   REAL DATA / PORTFOLIO STATES
+   ========================================================= */
+
+.data-state {
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.data-state strong {
+  color: var(--text);
+  font-size: 16px;
+}
+
+.data-state--error {
+  color: var(--negative);
+}
+
+.sparkline-unavailable {
+  width: 62px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 18px;
+}
+
+.summary-card--loading {
+  min-height: 112px;
+  position: relative;
+  overflow: hidden;
+}
+
+.summary-card--loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.035) 50%,
+      transparent 100%
+    );
+  animation: slaifi-skeleton 1.25s infinite linear;
+}
+
+@keyframes slaifi-skeleton {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.watch-source {
+  color: var(--text-muted);
+  text-transform: capitalize;
+  font-size: 12px;
+}
+
+.portfolio-page-state {
+  min-height: 420px;
+}
+
+.portfolio-empty-state {
+  min-height: 360px;
+  max-width: 760px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 42px;
+}
+
+.portfolio-empty-state h2 {
+  margin: 10px 0 8px;
+  color: var(--text);
+  font-size: clamp(26px, 3vw, 38px);
+  letter-spacing: -0.035em;
+}
+
+.portfolio-empty-state p {
+  max-width: 560px;
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.portfolio-summary-card {
+  min-height: 118px;
+}
+
+.portfolio-metric-detail {
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+
+/* =========================================================
+   HOLDINGS
+   ========================================================= */
+
+.portfolio-holdings {
+  overflow: hidden;
+}
+
+.holdings-table {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.holdings-row {
+  display: grid;
+  grid-template-columns:
+    minmax(170px, 1.5fr)
+    minmax(86px, 0.7fr)
+    minmax(100px, 0.8fr)
+    minmax(120px, 0.95fr)
+    minmax(78px, 0.65fr)
+    minmax(120px, 0.9fr);
+
+  align-items: center;
+  gap: 14px;
+
+  min-width: 780px;
+  padding: 16px 4px;
+  border-top: 1px solid var(--border);
+
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.holdings-row--header {
+  padding-top: 8px;
+  padding-bottom: 10px;
+  border-top: 0;
+
+  color: var(--text-muted);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.holdings-row strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+
+/* =========================================================
+   ALLOCATION
+   ========================================================= */
+
+.allocation-panel {
+  min-height: 100%;
+}
+
+.allocation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-top: 8px;
+}
+
+.allocation-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.allocation-item__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.allocation-item__header strong {
+  color: var(--text);
+}
+
+.allocation-track {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-hover);
+}
+
+.allocation-fill {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+
+/* =========================================================
+   PORTFOLIO RISK
+   ========================================================= */
+
+.portfolio-risk-panel {
+  margin-top: 20px;
+}
+
+.risk-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.risk-grid > div {
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+
+  background: var(--surface-soft);
+}
+
+.risk-grid span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.risk-grid strong {
+  color: var(--text);
+  font-size: 20px;
+  letter-spacing: -0.025em;
+}
+
+.portfolio-insight {
+  min-height: 100%;
+}
+
+
+/* =========================================================
+   BUTTON
+   ========================================================= */
+
+.secondary-button {
+  min-height: 34px;
+  margin-left: 14px;
+  padding: 0 14px;
+
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+
+  background: transparent;
+  color: var(--text);
+
+  font: inherit;
+  cursor: pointer;
+}
+
+.secondary-button:hover {
+  background: var(--surface-hover);
+}
+
+
+/* =========================================================
+   RESPONSIVE
+   ========================================================= */
+
+@media (max-width: 1100px) {
+  .risk-grid {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .risk-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .portfolio-empty-state {
+    min-height: 300px;
+    padding: 28px;
+  }
+}
+
 @media (max-width: 1100px) {
   .dashboard-grid { grid-template-columns: minmax(0, 1.55fr) minmax(280px, 1fr); }
   .watch-row { grid-template-columns: minmax(160px, 1.4fr) .55fr .62fr .75fr 24px; gap: 8px; }
