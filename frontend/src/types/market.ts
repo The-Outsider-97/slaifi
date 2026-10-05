@@ -58,6 +58,8 @@ export type SlaiRuntimeStatus = {
   outcome?: string | null;
   degraded?: boolean;
   validation_status?: string | null;
+  safety_status?: string | null;
+  safety_agent?: string | null;
 };
 
 export type OHLCVBarInput = {

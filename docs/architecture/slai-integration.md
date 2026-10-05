@@ -1,6 +1,6 @@
 # SLAI Integration Boundary
 
-SLAIFI lives at `SLAI/application/slaifi/`. Full SLAI integration means integration through explicit runtime boundaries, not direct SLAI imports throughout financial code.
+SLAIFI integrates into the wider ecosystem at `SLAI/applications/slaifi/`. Full SLAI integration means using explicit runtime boundaries, not importing SLAI throughout financial code.
 
 ## Authority and dependency direction
 
@@ -19,79 +19,81 @@ FinancialReasoner port
         ↑
 SlaiFinancialReasoner
         ↓
-SLAI AgentFactory
+SLAI AgentFactory + SharedMemory
         ↓
 Reasoning Agent
-        ↕
-SLAI SharedMemory
+        ↓
+Quality Agent
+        ↓
+optional one-pass refinement
+        ↓
+Safety Agent (generated interpretation only)
 ```
 
-Core, Domain and Engines never import SLAI agents or SharedMemory. API routes never import concrete integrations. The composition root wires the adapter.
+Core, Domain and Engines never import SLAI agents or SharedMemory. API routes never import concrete SLAI integrations. The composition root wires the adapter.
 
-## Actual SLAI v2.3 contracts
+## Agent responsibilities
 
-The adapter uses the real SLAI APIs:
+- **Reasoning Agent** interprets structured, already-calculated financial evidence. It does not own prices, portfolio accounting, indicators, risk arithmetic or goal arithmetic.
+- **Quality Agent** checks the generated reasoning artifact. A blocking verdict may trigger exactly one controlled refinement pass; there is no recursive agent loop.
+- **Safety Agent** reviews only the final generated interpretation. Raw financial evidence and private portfolio state are deliberately not copied into the Safety Agent payload. `allow`, `review`, and `block` are exposed as provenance; `block` suppresses the interpretation while leaving deterministic financial output intact.
+- **SharedMemory** stores short-lived request/result provenance under a configured TTL. SLAIFI persists an evidence fingerprint/shape manifest rather than a duplicate copy of raw financial evidence, and it records whether an interpretation existed rather than persisting the interpretation text. SharedMemory is coordination memory, not durable financial persistence.
 
-- `AgentFactory.create(agent_type, shared_memory=...)` creates or retrieves the registered Reasoning Agent;
-- `ReasoningAgent.reason(problem, reasoning_type=None, context=None)` performs typed reasoning;
-- `AgentFactory.release(agent_type)` releases an adapter-owned agent;
-- SharedMemory `set(..., ttl=..., tags=...)` supports the SLAIFI transaction records;
-- Reasoning Agent runtime/health data is used for status rather than inferred from import success.
+Planning, Learning, Adaptive, Evaluation, Privacy and other SLAI agents are intentionally not invoked on every financial request. The current market/portfolio pipelines are fixed and deterministic, so a planner would add latency without changing the plan. Learning/Adaptive require an explicit, validated outcome/reward contract before they may influence future analytical strategy. Evaluation is not duplicated where the Quality Agent already owns artifact validation. Privacy is enforced first through data minimization at the integration boundary; invoking a Privacy Agent on authoritative numerical evidence would add a transformation stage where none is currently needed.
 
-## Logging ownership
+## Runtime contracts
 
-SLAI owns process-level logging through `SLAI/logs/logger.py`. SLAIFI does not configure an independent root logger. Domain and deterministic Engines remain logging-free.
+The adapter uses the SLAI runtime through:
 
-## Lifecycle ownership
+- `AgentFactory.create(agent_type, shared_memory=...)` for lazily shared agent instances;
+- `ReasoningAgent.reason(problem, reasoning_type=None, context=None)` for contextual reasoning;
+- `QualityAgent.perform_task(...)` for bounded artifact quality assessment;
+- `SafetyAgent.perform_task(data_to_assess, context=...)` for interpretation safety review;
+- `AgentFactory.release(agent_type)` for adapter-owned lifecycle cleanup;
+- SharedMemory `set(..., ttl=..., tags=...)` for correlation/provenance records.
 
-When the wider SLAI host injects AgentFactory and SharedMemory, both must be supplied together and remain host-owned. SLAIFI does not release or close them.
+When AgentFactory and SharedMemory are injected by the wider SLAI host, both remain host-owned. SLAIFI does not close or release them. When SLAIFI creates its own SLAI runtime, it releases only the resources it owns.
 
-When the root SLAIFI launcher is running inside SLAI without injected objects, the adapter lazily obtains AgentFactory and SharedMemory and owns that integration lifecycle for its process. On shutdown it releases the Reasoning Agent through the Factory and closes only the memory object it obtained for that lifecycle.
+## Reasoning transaction
 
-## Versioned reasoning transaction
-
-Every reasoning operation receives a unique correlation ID independent of portfolio IDs, ticker symbols, users, or request IDs.
+Every analysis gets a correlation ID independent of portfolio IDs, symbols, users and HTTP request IDs:
 
 ```text
 slaifi:reasoning:request:<correlation_id>
 slaifi:reasoning:result:<correlation_id>
 ```
 
-The version-2 request envelope records source, operation, objective, authoritative evidence, constraints, assumptions, uncertainty, caller request ID, correlation ID, timestamp, requested agent and reasoning mode. The result envelope intentionally stores a compact audit summary instead of the Reasoning Agent's potentially large native output: agent/version, runtime result status, strategy, confidence, outcome, validation status, degraded flag, interpretation, warnings, IDs and completion timestamp.
+The request envelope stores source, operation, objective, an evidence SHA-256 fingerprint plus top-level shape metadata, key names for constraints/assumptions/uncertainty, caller request ID, correlation ID, timestamp and requested reasoning mode. Raw financial evidence remains in the in-process Reasoning Agent call and is not duplicated into SLAIFI's SharedMemory record.
 
-Both records use the configured TTL and the tags `slaifi` and `financial_reasoning`. SharedMemory remains coordination/provenance context, not durable financial persistence.
+The result envelope stores a compact audit summary: agent/version, status, reasoning metadata, Quality result, public-safe Safety result, whether an interpretation was produced, warnings, IDs and duration. The generated interpretation text itself is returned to the caller but is not duplicated into SLAIFI's SharedMemory record. Raw Safety/Quality internals are not exposed through the public API.
 
-## Reasoning intelligence
+Both records use the configured TTL and the tags `slaifi` and `financial_reasoning`.
 
-The Reasoning Agent receives structured evidence and an explicit authority contract. SLAIFI asks it, where the available evidence supports the topic, to reason across:
+## Reasoning authority
 
-1. market context;
-2. observed evidence;
-3. portfolio relevance;
-4. risk considerations;
-5. goal alignment;
-6. conflicting signals;
-7. uncertainty;
-8. conditions that could change the interpretation.
+The Reasoning Agent receives structured evidence covering, where available, market state, observed metrics, portfolio relevance, risk, goals, conflicting signals, uncertainty and conditions that could change the interpretation.
 
-The guardrails state that Domain/Engine values are authoritative. The agent may explain and synthesize; it may not fabricate missing prices, holdings, goals or confidence, silently replace calculations, imply guaranteed returns, or convert illustrative analysis into an execution instruction.
+Domain/Engine values are authoritative. SLAI may explain and synthesize; it may not fabricate prices, holdings, performance, goals or confidence, silently replace calculations, imply guaranteed returns, or convert analysis into an execution instruction.
 
-The public API exposes only safe provenance: status, interpretation, agent identity/version, strategy, confidence, outcome, validation status, degraded flag, correlation ID, request ID and warnings. Raw Reasoning Agent output and SharedMemory keys stay internal.
+Public responses expose only bounded provenance: runtime status, interpretation, agent identity/version, strategy, confidence, outcome, validation status, Safety status/agent, degraded flag, correlation ID, request ID and warnings. Raw reasoning output and SharedMemory keys remain internal.
 
 ## Failure semantics
 
 ```text
 SLAI available
-→ financial output + interpretation + provenance
+→ deterministic financial output + reviewed interpretation + provenance
 
-Reasoning result degraded
-→ financial output + degraded interpretation/warnings
+Quality warning / Safety review
+→ deterministic output + interpretation + explicit degraded status
 
-Runtime unavailable and optional
-→ financial output remains valid; reasoning status unavailable
+Quality block after one refinement / Safety block
+→ deterministic output + interpretation suppressed + explicit degraded status
 
-Runtime unavailable and required
+SLAI runtime unavailable and optional
+→ deterministic financial output remains valid; reasoning unavailable
+
+SLAI runtime unavailable and required
 → controlled ReasoningUnavailableError
 ```
 
-A healthy agent process does not automatically make an individual reasoning result healthy: Phase-3 `degraded` and validation status are reflected in the per-result SLAIFI status.
+A healthy agent process does not automatically make an individual reasoning result healthy. Per-analysis degradation, validation and Safety outcomes are propagated independently from runtime health.

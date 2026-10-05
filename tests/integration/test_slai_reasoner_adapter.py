@@ -201,15 +201,23 @@ def test_slai_adapter_uses_factory_shared_memory_and_authoritative_evidence() ->
     assert request_key.startswith("slaifi:reasoning:request:")
     assert result_key.startswith("slaifi:reasoning:result:")
     assert isinstance(request_payload, dict)
-    assert request_payload["schema_version"] == 3
+    assert request_payload["schema_version"] == 5
     assert request_payload["request_id"] == "client-42"
     assert request_payload["correlation_id"] == result.correlation_id
     assert request_payload["agent"]["type"] == "reasoning"
+    assert request_payload["evidence_manifest"]["top_level_keys"] == [
+        "latest_return_rate"
+    ]
+    assert request_payload["assumption_keys"] == ["periods_per_year"]
+    assert request_payload["uncertainty_keys"] == ["prediction_model_used"]
+    assert "authoritative_evidence" not in request_payload
     assert request_kwargs["tags"] == ["slaifi", "financial_reasoning"]
     assert isinstance(result_payload, dict)
-    assert result_payload["schema_version"] == 3
+    assert result_payload["schema_version"] == 5
     assert result_payload["reasoning"]["strategy"] == "cause_effect"
     assert result_payload["status"] == "available"
+    assert result_payload["interpretation_present"] is True
+    assert "interpretation" not in result_payload
     assert result_payload["duration_ms"] >= 0
     assert result_kwargs["ttl"] == 900
 
@@ -324,29 +332,49 @@ def test_repeated_reasoning_generates_distinct_correlation_keys() -> None:
         factory=FakeFactory(FakeAgent()),
         shared_memory=memory,
     )
-    first = adapter.reason(ReasoningRequest(operation="test", evidence={}, objective="interpret"))
-    second = adapter.reason(ReasoningRequest(operation="test", evidence={}, objective="interpret"))
+    first = adapter.reason(
+        ReasoningRequest(operation="test", evidence={}, objective="interpret")
+    )
+    second = adapter.reason(
+        ReasoningRequest(operation="test", evidence={}, objective="interpret")
+    )
     assert first.correlation_id
     assert second.correlation_id
     assert first.correlation_id != second.correlation_id
     assert first.memory_key != second.memory_key
 
 
-def test_json_safe_evidence_is_written_without_mutating_authoritative_input() -> None:
+def test_shared_memory_stores_manifest_without_raw_financial_evidence() -> None:
     memory = FakeMemory()
-    adapter = SlaiFinancialReasoner(factory=FakeFactory(FakeAgent()), shared_memory=memory)
+    agent = FakeAgent()
+    adapter = SlaiFinancialReasoner(
+        factory=FakeFactory(agent),
+        shared_memory=memory,
+    )
     record = EvidenceRecord(
         datetime(2026, 9, 25, tzinfo=UTC),
         Decimal("12.50"),
         EvidenceKind.OBSERVED,
     )
     adapter.reason(
-        ReasoningRequest(operation="test", evidence={"record": record}, objective="interpret")
+        ReasoningRequest(
+            operation="test",
+            evidence={"record": record},
+            objective="interpret",
+        )
     )
+
     request_payload = memory.writes[0][1]
     assert isinstance(request_payload, dict)
-    assert request_payload["authoritative_evidence"]["record"]["amount"] == "12.50"
-    assert request_payload["authoritative_evidence"]["record"]["kind"] == "observed"
+    assert request_payload["evidence_manifest"]["top_level_keys"] == ["record"]
+    assert len(request_payload["evidence_manifest"]["sha256"]) == 64
+    assert "authoritative_evidence" not in request_payload
+    assert "12.50" not in repr(request_payload)
+
+    context = agent.calls[0][2]
+    assert isinstance(context, dict)
+    assert context["authoritative_evidence"]["record"]["amount"] == "12.50"
+    assert context["authoritative_evidence"]["record"]["kind"] == "observed"
     assert record.amount == Decimal("12.50")
 
 
@@ -355,7 +383,9 @@ def test_reasoning_level_degradation_is_exposed_even_when_agent_health_is_good()
         factory=FakeFactory(FakeAgent(degraded=True)),
         shared_memory=FakeMemory(),
     )
-    result = adapter.reason(ReasoningRequest(operation="test", evidence={}, objective="interpret"))
+    result = adapter.reason(
+        ReasoningRequest(operation="test", evidence={}, objective="interpret")
+    )
     assert result.status is ReasoningStatus.DEGRADED
     assert result.degraded is True
     assert result.validation_status == "partial"
@@ -364,8 +394,13 @@ def test_reasoning_level_degradation_is_exposed_even_when_agent_health_is_good()
 
 def test_optional_reasoning_failure_returns_degraded_result_and_audit_envelope() -> None:
     memory = FakeMemory()
-    adapter = SlaiFinancialReasoner(factory=FakeFactory(FailingAgent()), shared_memory=memory)
-    result = adapter.reason(ReasoningRequest(operation="test", evidence={}, objective="interpret"))
+    adapter = SlaiFinancialReasoner(
+        factory=FakeFactory(FailingAgent()),
+        shared_memory=memory,
+    )
+    result = adapter.reason(
+        ReasoningRequest(operation="test", evidence={}, objective="interpret")
+    )
     assert result.status is ReasoningStatus.DEGRADED
     assert result.interpretation is None
     assert result.memory_key is not None
@@ -377,8 +412,13 @@ def test_optional_reasoning_failure_returns_degraded_result_and_audit_envelope()
 
 
 def test_optional_slai_runtime_degrades_without_breaking_financial_layer() -> None:
-    adapter = SlaiFinancialReasoner(factory=FailingFactory(), shared_memory=FakeMemory())
-    result = adapter.reason(ReasoningRequest(operation="test", evidence={}, objective="interpret"))
+    adapter = SlaiFinancialReasoner(
+        factory=FailingFactory(),
+        shared_memory=FakeMemory(),
+    )
+    result = adapter.reason(
+        ReasoningRequest(operation="test", evidence={}, objective="interpret")
+    )
     assert result.status is ReasoningStatus.UNAVAILABLE
 
 
@@ -389,7 +429,9 @@ def test_required_slai_runtime_fails_explicitly() -> None:
         required=True,
     )
     with pytest.raises(ReasoningUnavailableError):
-        adapter.reason(ReasoningRequest(operation="test", evidence={}, objective="interpret"))
+        adapter.reason(
+            ReasoningRequest(operation="test", evidence={}, objective="interpret")
+        )
 
 
 def test_partial_host_runtime_injection_is_rejected() -> None:
@@ -407,7 +449,9 @@ def test_host_owned_runtime_is_never_closed_by_slaifi() -> None:
     assert memory.closed is False
 
 
-def test_lazily_created_runtime_is_released_and_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_lazily_created_runtime_is_released_and_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     memory = FakeMemory()
     factory = FakeFactory(FakeAgent())
 

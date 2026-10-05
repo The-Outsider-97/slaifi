@@ -114,6 +114,32 @@ export function SlaiInsightCard({
           </strong>
         </div>
 
+        {reasoning?.validation_status ? (
+          <div>
+            <span>
+              Quality
+            </span>
+            <strong>
+              {
+                reasoning.validation_status
+              }
+            </strong>
+          </div>
+        ) : null}
+
+        {reasoning?.safety_status ? (
+          <div>
+            <span>
+              Safety
+            </span>
+            <strong>
+              {
+                reasoning.safety_status
+              }
+            </strong>
+          </div>
+        ) : null}
+
         {reasoning?.reasoning_strategy ? (
           <div>
             <span>
@@ -139,6 +165,15 @@ export function SlaiInsightCard({
           </div>
         ) : null}
       </div>
+
+      {reasoning?.warnings?.length ? (
+        <p
+          className="insight-warning"
+          role="status"
+        >
+          {reasoning.warnings.join(" ")}
+        </p>
+      ) : null}
 
       {error ? (
         <p

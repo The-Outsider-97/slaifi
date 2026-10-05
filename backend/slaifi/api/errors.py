@@ -5,7 +5,12 @@ from fastapi.responses import JSONResponse
 from logs.logger import get_logger
 
 from slaifi.application.contracts import ReasoningUnavailableError
-from slaifi.core.utils.errors import CalculationError, SlaifiError, ValidationError
+from slaifi.core.utils.errors import (
+    CalculationError,
+    InfrastructureError,
+    SlaifiError,
+    ValidationError,
+)
 
 logger = get_logger("SLAIFI API")
 
@@ -37,6 +42,23 @@ def install_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=422,
             content={"error": "financial_calculation_error", "detail": str(exc)},
+        )
+
+    @app.exception_handler(InfrastructureError)
+    async def infrastructure_error(
+        _: Request,
+        exc: InfrastructureError,
+    ) -> JSONResponse:
+        logger.warning(
+            "Infrastructure failure | component=%s | operation=%s | retryable=%s | error=%s",
+            exc.component or "unknown",
+            exc.operation or "unknown",
+            exc.retryable,
+            exc,
+        )
+        return JSONResponse(
+            status_code=502,
+            content={"error": "infrastructure_error", "detail": str(exc)},
         )
 
     @app.exception_handler(SlaifiError)

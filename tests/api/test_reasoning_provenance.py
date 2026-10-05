@@ -25,6 +25,8 @@ class ProvenanceReasoner:
             outcome="indeterminate",
             degraded=True,
             validation_status="partial",
+            safety_status="allow",
+            safety_agent="safety",
             warnings=("SLAI reasoning validation status: partial.",),
         )
 
@@ -90,6 +92,8 @@ def test_public_reasoning_response_exposes_safe_provenance_only() -> None:
         "outcome": "indeterminate",
         "degraded": True,
         "validation_status": "partial",
+        "safety_status": "allow",
+        "safety_agent": "safety",
         "warnings": ["SLAI reasoning validation status: partial."],
     }
     assert "raw_result" not in reasoning

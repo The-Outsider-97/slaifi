@@ -1,6 +1,6 @@
 # Frontend Runtime and Data Provenance
 
-The Market Overview desktop page follows the supplied SLAIFI reference design: a fixed workspace sidebar, compact top bar, four market-summary cards, a large market-performance panel, an SLAI insight panel, market watch, goals, and the educational footer. Desktop fidelity is the primary layout target; the sidebar becomes an overlay below 900 px and the two-column panels stack.
+The frontend is a presentation layer over authoritative SLAIFI API contracts. It does not own portfolio accounting, risk arithmetic, technical-indicator calculations, market-history generation, or SLAI reasoning.
 
 ## Component responsibilities
 
@@ -9,30 +9,49 @@ MarketOverviewPage
 ├── AppShell
 │   ├── Sidebar
 │   └── TopBar
-├── MarketSummaryCard × 4
+├── MarketSummaryCard
 ├── MarketPerformanceChart
 ├── SlaiInsightCard
 ├── MarketWatchTable
 └── GoalsCard
+
+MyPortfolioPage
+├── AppShell
+├── Portfolio summary
+├── Holdings
+├── Allocation
+├── Risk
+└── SLAI portfolio insight
 ```
 
-Components represent product responsibilities rather than individual labels. Financial calculations are not duplicated in React.
+Components represent product responsibilities rather than financial business logic.
 
-## Data provenance
+## Market data provenance
 
-The UI never silently mixes demo and live values.
+`GET /api/v1/market/overview` supplies normalized quote data and the backend-owned `data_mode`. The UI does not convert mock values into apparently live values. Production configuration rejects the mock provider.
 
-- `GET /api/v1/market/overview` supplies normalized quote data. The current backend explicitly returns `data_mode="mock"`; while that remains true, the screenshot-aligned headline index values stay illustrative instead of presenting mock SPY/QQQ/DIA placeholder prices as live indices.
-- When a future provider changes `data_mode` away from `mock`, matching summary-card quotes may use API values.
-- The performance chart is explicitly labelled `Illustrative data · Not a live market feed` because SLAIFI does not yet expose a historical-series market provider.
-- Market-watch status labels are explicitly described as `Illustrative sample signals — not recommendations.` No recommendation engine is implied.
-- The insight card starts with an illustrative scenario. Its CTA is disabled unless `/api/v1/integrations/slai` reports `available` or `degraded`.
-- Selecting `Explore the reasoning` posts the illustrative OHLCV series to `/api/v1/analysis/market`. Those bars then traverse Domain and Engines before the real SLAI Reasoning Agent sees the calculated evidence. A returned interpretation is therefore real SLAI reasoning over clearly labelled illustrative market data, not fabricated SLAI availability.
+`GET /api/v1/market/history/{symbol}` supplies the historical OHLCV series used by the performance chart and by market-analysis requests. If real history is unavailable, the chart renders an explicit unavailable/empty state. No replacement chart series is generated in React.
 
-## Failure states
+Market analysis is only requested after historical evidence exists. The frontend sends that backend-sourced series to `POST /api/v1/analysis/market`; deterministic SLAIFI engines calculate financial evidence before the SLAI adapter receives it.
 
-Market API failure leaves the educational dashboard available with an explicit fallback warning. SLAI status or reasoning failure never removes deterministic/illustrative financial content. Runtime state is shown as available, degraded, unavailable, or disabled according to the backend contract.
+## Portfolio provenance
+
+`GET /api/v1/portfolio/current` loads the configured portfolio ledger and returns deterministic valuation without invoking SLAI by default. The UI does not reconstruct positions or valuation locally.
+
+SLAI portfolio interpretation is opt-in through the same route with `include_reasoning=true`. This keeps normal dashboard loading deterministic and avoids unnecessary agent latency.
+
+If no portfolio source is configured, the API returns no content and the UI presents an empty state. Missing portfolio history leaves risk/performance metrics unavailable instead of being approximated in React.
+
+## SLAI provenance
+
+`GET /api/v1/integrations/slai` reports runtime availability. Analysis responses may additionally expose bounded provenance including agent, strategy, confidence, validation status, Safety status, correlation ID and warnings.
+
+The UI never fabricates an SLAI interpretation. When SLAI is degraded or unavailable, deterministic market/portfolio information remains usable and the status is presented explicitly.
+
+## Failure and stale-data behavior
+
+Provider failures are API failures, not triggers for realistic-looking fallback values. Loading, error, no-data and degraded SLAI states remain visually distinct. Market-source timestamps and provider source values originate in backend responses.
 
 ## Presentation conversions
 
-Formatting such as decimal-to-display percentage, currency separators, selected chart range, and responsive layout belongs to React. Indicator, risk, goal, portfolio and return calculations remain backend responsibilities.
+Display-only operations such as locale formatting, decimal-to-display percentage conversion, selected chart range, responsive layout and accessibility state belong to React. Indicator, risk, goal, portfolio and return calculations remain backend responsibilities.

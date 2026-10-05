@@ -186,7 +186,11 @@ function PortfolioInsight({
             <strong>{reasoning.confidence == null ? "Not reported" : `${(reasoning.confidence * 100).toFixed(0)}%`}</strong>
           </div>
           <div><span>Validation</span><strong>{reasoning.validation_status ?? "Not reported"}</strong></div>
+          <div><span>Safety</span><strong>{reasoning.safety_status ?? "Not reported"}</strong></div>
         </div>
+      ) : null}
+      {reasoning?.warnings?.length ? (
+        <p className="insight-warning" role="status">{reasoning.warnings.join(" ")}</p>
       ) : null}
       {error ? <p className="insight-error" role="alert">{error}</p> : null}
       <button className="primary-cta" type="button" disabled={loading} onClick={onExplore}>

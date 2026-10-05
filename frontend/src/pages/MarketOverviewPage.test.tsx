@@ -115,6 +115,8 @@ const analysisResponse = {
     outcome: "supported",
     degraded: false,
     validation_status: "passed",
+    safety_status: "allow",
+    safety_agent: "safety",
     warnings: [],
   },
 };
@@ -216,6 +218,8 @@ describe("MarketOverviewPage", () => {
     expect(await screen.findByText("Evidence, in context.")).toBeInTheDocument();
     expect(screen.getByText(/positive short-term move/i)).toBeInTheDocument();
     expect(screen.getByText("cause_effect")).toBeInTheDocument();
+    expect(screen.getByText("passed")).toBeInTheDocument();
+    expect(screen.getByText("allow")).toBeInTheDocument();
     expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/api/v1/analysis/market"))).toHaveLength(1);
   });
 

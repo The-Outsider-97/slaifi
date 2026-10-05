@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     slai_quality_enabled: bool = True
     slai_quality_agent: str = "quality"
     slai_quality_refinement_enabled: bool = True
+    slai_safety_enabled: bool = True
+    slai_safety_agent: str = "safety"
     slai_memory_ttl_seconds: int = Field(default=900, ge=1, le=86_400)
 
     @model_validator(mode="after")

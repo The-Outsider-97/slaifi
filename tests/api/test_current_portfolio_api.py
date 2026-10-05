@@ -17,7 +17,12 @@ from slaifi.main import create_app
 class PortfolioMarketProvider:
     data_mode = "test"
 
+    def __init__(self) -> None:
+        self.requested_assets: list[tuple[AssetId, ...]] = []
+
     async def get_quotes(self, assets: Sequence[AssetId]) -> Sequence[PriceQuote]:
+        normalized = tuple(assets)
+        self.requested_assets.append(normalized)
         observed_at = datetime.now(UTC)
         return tuple(
             PriceQuote(
@@ -27,7 +32,7 @@ class PortfolioMarketProvider:
                 observed_at=observed_at,
                 source="test",
             )
-            for asset in assets
+            for asset in normalized
         )
 
     async def get_bars(
@@ -143,6 +148,60 @@ def test_current_portfolio_runs_slai_only_when_explicitly_requested(tmp_path: Pa
     evidence = reasoner.requests[0].evidence
     assert evidence["total_value"] == "1040"
     assert evidence["positions"][0]["asset"] == "ABC"
+
+
+def test_current_portfolio_fetches_prices_only_for_open_positions(tmp_path: Path) -> None:
+    portfolio_file = tmp_path / "portfolio.json"
+    write_portfolio(portfolio_file)
+    payload = json.loads(portfolio_file.read_text(encoding="utf-8"))
+    payload["trades"].extend(
+        [
+            {
+                "trade_id": "closed-buy",
+                "asset": {
+                    "symbol": "CLOSED",
+                    "asset_class": "equity",
+                    "currency": "USD",
+                },
+                "side": "buy",
+                "quantity": "1",
+                "unit_price": "50",
+                "fee": "0",
+                "occurred_at": "2026-01-03T00:00:00+00:00",
+                "currency": "USD",
+            },
+            {
+                "trade_id": "closed-sell",
+                "asset": {
+                    "symbol": "CLOSED",
+                    "asset_class": "equity",
+                    "currency": "USD",
+                },
+                "side": "sell",
+                "quantity": "1",
+                "unit_price": "55",
+                "fee": "0",
+                "occurred_at": "2026-01-04T00:00:00+00:00",
+                "currency": "USD",
+            },
+        ]
+    )
+    portfolio_file.write_text(json.dumps(payload), encoding="utf-8")
+
+    provider = PortfolioMarketProvider()
+    app = create_app(
+        Settings(environment="test", portfolio_file=portfolio_file),
+        market_provider=provider,
+        financial_reasoner=RecordingReasoner(),
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/portfolio/current")
+
+    assert response.status_code == 200
+    assert len(provider.requested_assets) == 1
+    assert [asset.symbol for asset in provider.requested_assets[0]] == ["ABC"]
+    assert [item["asset"] for item in response.json()["snapshot"]["positions"]] == ["ABC"]
 
 
 def test_current_portfolio_returns_no_content_when_source_is_unconfigured() -> None:
