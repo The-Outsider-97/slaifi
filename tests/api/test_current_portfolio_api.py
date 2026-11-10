@@ -157,3 +157,43 @@ def test_current_portfolio_returns_no_content_when_source_is_unconfigured() -> N
 
     assert response.status_code == 204
     assert response.content == b""
+
+
+def test_missing_configured_portfolio_is_not_reported_as_empty(tmp_path: Path) -> None:
+    app = create_app(
+        Settings(environment="test", portfolio_file=tmp_path / "missing.json"),
+        market_provider=PortfolioMarketProvider(),
+        financial_reasoner=RecordingReasoner(),
+    )
+    with TestClient(app) as client:
+        response = client.get("/api/v1/portfolio/current")
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Configured portfolio source is unavailable"
+
+
+def test_closed_positions_do_not_trigger_market_data_requests(tmp_path: Path) -> None:
+    portfolio_file = tmp_path / "portfolio.json"
+    write_portfolio(portfolio_file)
+    payload = json.loads(portfolio_file.read_text(encoding="utf-8"))
+    closed_trade = dict(payload["trades"][0])
+    closed_trade.update(
+        trade_id="sell-1",
+        side="sell",
+        occurred_at="2026-01-03T00:00:00+00:00",
+    )
+    payload["trades"].append(closed_trade)
+    portfolio_file.write_text(json.dumps(payload), encoding="utf-8")
+
+    class NoQuotesProvider(PortfolioMarketProvider):
+        async def get_quotes(self, assets: Sequence[AssetId]) -> Sequence[PriceQuote]:
+            raise AssertionError("Closed positions must not request market quotes")
+
+    app = create_app(
+        Settings(environment="test", portfolio_file=portfolio_file),
+        market_provider=NoQuotesProvider(),
+        financial_reasoner=RecordingReasoner(),
+    )
+    with TestClient(app) as client:
+        response = client.get("/api/v1/portfolio/current")
+    assert response.status_code == 200
+    assert response.json()["snapshot"]["positions"] == []
