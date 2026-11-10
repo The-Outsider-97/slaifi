@@ -21,6 +21,7 @@ from slaifi.application.analysis import AnalyzePortfolio
 from slaifi.core.config import Settings
 from slaifi.domain.assets import AssetId
 from slaifi.domain.market.provider import MarketDataProvider
+from slaifi.engines.portfolio import build_positions
 
 router = APIRouter(prefix="/api/v1/portfolio", tags=["portfolio"])
 
@@ -48,8 +49,13 @@ async def current_portfolio(
     """Return the current portfolio valued with authoritative provider prices."""
 
     path = settings.portfolio_file
-    if path is None or not path.exists():
+    if path is None:
         return Response(status_code=204)
+    if not path.is_file():
+        raise HTTPException(
+            status_code=503,
+            detail="Configured portfolio source is unavailable",
+        )
 
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -68,12 +74,12 @@ async def current_portfolio(
         ) from exc
 
     portfolio = portfolio_input.to_domain()
-    assets: list[AssetId] = []
-    seen: set[AssetId] = set()
-    for trade in portfolio.trades:
-        if trade.asset not in seen:
-            seen.add(trade.asset)
-            assets.append(trade.asset)
+    # Closed positions need no live quote; use the existing accounting engine
+    # rather than independently reconstructing holdings from the trade ledger.
+    positions = build_positions(portfolio.trades)
+    assets: list[AssetId] = [
+        position.asset for position in positions if position.quantity > 0
+    ]
 
     prices: dict[AssetId, Decimal] = {}
     if assets:
