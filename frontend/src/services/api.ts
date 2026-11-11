@@ -24,20 +24,56 @@ export function createRequestId() {
   return `slaifi-ui-${Date.now()}`;
 }
 
+/** An HTTP failure with the status and the server's explanation kept apart from the message. */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly detail: string;
+  readonly code: string;
+
+  constructor(message: string, status: number, detail: string, code: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.detail = detail;
+    this.code = code;
+  }
+}
+
+/** The text to show a person: the server's detail when there is one, otherwise a plain fallback. */
+export function errorText(error: unknown): string {
+  if (error instanceof ApiError) return error.detail || `The request failed (status ${error.status}).`;
+  if (error instanceof Error) return error.name === "AbortError" ? "" : error.message;
+  return "Something went wrong.";
+}
+
 async function responseError(response: Response, path: string): Promise<Error> {
   let detail = "";
+  let code = "";
   try {
-    const body = (await response.json()) as { detail?: string; error?: string };
-    detail = body.detail ?? body.error ?? "";
+    const body = (await response.json()) as { detail?: unknown; error?: string };
+    code = body.error ?? "";
+    if (typeof body.detail === "string") {
+      detail = body.detail;
+    } else if (Array.isArray(body.detail)) {
+      detail = body.detail
+        .map((item) => (item && typeof item === "object" && "msg" in item ? String((item as { msg: unknown }).msg) : ""))
+        .filter(Boolean)
+        .join("; ");
+    } else {
+      detail = body.error ?? "";
+    }
   } catch {
     detail = "";
   }
-  return new Error(
+  return new ApiError(
     `${path} request failed with status ${response.status}${detail ? `: ${detail}` : ""}`,
+    response.status,
+    detail,
+    code,
   );
 }
 
-async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {

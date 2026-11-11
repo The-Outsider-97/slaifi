@@ -12,7 +12,12 @@ import {
 
 export type AppPage =
   | "market"
-  | "portfolio";
+  | "analysis"
+  | "portfolio"
+  | "paper"
+  | "advisor"
+  | "strategy"
+  | "settings";
 
 type AppShellProps = {
   children: ReactNode;
