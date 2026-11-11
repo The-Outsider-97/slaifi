@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from slaifi.application.contracts import (
@@ -82,7 +83,7 @@ def test_portfolio_analysis_endpoint_integrates_financial_layers_and_reasoning()
     body = response.json()
     assert body["snapshot"]["total_value"] == "1039"
     assert body["risk"]["observation_count"] == 4
-    assert body["goals"]["returns"]["annual_rate_gap"] == -0.02
+    assert body["goals"]["returns"]["annual_rate_gap"] == pytest.approx(-0.02)
     reasoning = body["reasoning"]
     assert reasoning["interpretation"] == "reasoned:portfolio_analysis"
     assert reasoning["request_id"] == "portfolio-request"

@@ -16,7 +16,7 @@ class StubProvider:
                 currency="USD",
                 observed_at=datetime(2026, 9, 25, tzinfo=UTC),
                 source="stub",
-                change_percent=Decimal("1.25"),
+                change_rate=0.0125,
             )
             for asset in assets
         ]

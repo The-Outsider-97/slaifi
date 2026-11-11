@@ -1,6 +1,8 @@
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
+import pytest
+
 from slaifi.application.analysis import AnalyzeMarketSeries, AnalyzePortfolio
 from slaifi.application.contracts import (
     ReasoningRequest,
@@ -119,7 +121,7 @@ def test_portfolio_analysis_composes_valuation_risk_goal_and_reasoning() -> None
     assert result.risk is not None
     assert result.goals is not None
     assert result.goals.returns is not None
-    assert result.goals.returns.annual_rate_gap == -0.02
+    assert result.goals.returns.annual_rate_gap == pytest.approx(-0.02)
     assert result.reasoning is not None
     assert reasoner.requests[0].operation == "portfolio_analysis"
     assert reasoner.requests[0].request_id == "portfolio-request"
