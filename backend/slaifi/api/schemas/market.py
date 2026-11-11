@@ -24,9 +24,7 @@ class MarketQuoteResponse(BaseModel):
     @classmethod
     def from_domain(cls, quote: PriceQuote) -> "MarketQuoteResponse":
         change_percent = (
-            None
-            if quote.change_rate is None
-            else Decimal(str(quote.change_rate * 100.0))
+            None if quote.change_rate is None else Decimal(str(quote.change_rate * 100.0))
         )
 
         return cls(

@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -29,14 +29,27 @@ class Settings(BaseSettings):
     )
     api_max_market_bars: int = Field(default=5000, ge=2, le=100_000)
     api_max_portfolio_trades: int = Field(default=10_000, ge=1, le=1_000_000)
+    # Mutating requests must carry the SLAIFI client marker header (see api.security).
+    api_require_client_header: bool = True
 
     # Market data. Mock mode is explicit and forbidden in production.
     market_provider: Literal["mock", "twelvedata"] = "mock"
-    market_api_key: str | None = None
+    market_api_key: SecretStr | None = None
     market_http_timeout_seconds: float = Field(default=10.0, gt=0.0, le=60.0)
     market_quote_cache_ttl_seconds: float = Field(default=5.0, ge=0.0, le=60.0)
     market_history_cache_ttl_seconds: float = Field(default=60.0, ge=0.0, le=900.0)
     market_overview_symbols: tuple[str, ...] = ("SPY", "QQQ", "DIA", "VIX")
+    # Known provider delay in minutes (for example 15 on a delayed plan). None means unknown;
+    # SLAIFI then reports quote age but never claims the feed is real time.
+    market_data_delay_minutes: int | None = Field(default=None, ge=0, le=1440)
+    # Mock mode can serve a clearly labelled synthetic history so the whole workflow can be
+    # exercised without a provider key. It is never market data and is flagged everywhere.
+    mock_illustrative_history: bool = True
+
+    # Paper trading. Real-money trading does not exist in SLAIFI and cannot be enabled.
+    paper_allow_illustrative_execution: bool = True
+    paper_allow_closed_market_execution: bool = False
+    paper_max_quote_age_seconds: int = Field(default=900, ge=1, le=86_400)
 
     # Optional JSON ledger containing actual portfolio state.
     portfolio_file: Path | None = None
@@ -55,7 +68,8 @@ class Settings(BaseSettings):
     def validate_runtime_contract(self) -> "Settings":
         if self.environment == "production" and self.market_provider == "mock":
             raise ValueError("production cannot use the mock market provider")
-        if self.market_provider == "twelvedata" and not (self.market_api_key or "").strip():
+        key = self.market_api_key.get_secret_value() if self.market_api_key is not None else ""
+        if self.market_provider == "twelvedata" and not key.strip():
             raise ValueError(
                 "SLAIFI_MARKET_API_KEY is required when SLAIFI_MARKET_PROVIDER=twelvedata"
             )

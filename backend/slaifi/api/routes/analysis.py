@@ -64,8 +64,7 @@ def analyze_portfolio(
         raise HTTPException(
             status_code=413,
             detail=(
-                "portfolio analysis accepts at most "
-                f"{settings.api_max_portfolio_trades} trades"
+                f"portfolio analysis accepts at most {settings.api_max_portfolio_trades} trades"
             ),
         )
     portfolio = payload.portfolio.to_domain()

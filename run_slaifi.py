@@ -9,28 +9,26 @@ SLAIFI itself lives at::
     SLAI/applications/slaifi/
 
 The launcher owns process startup only. Package resolution belongs to
-``applications.slaifi`` and requires no ``sys.path`` mutation.
+``applications.slaifi`` and requires no import-path mutation.
 """
 
 from __future__ import annotations
 
 import logging
 
-import uvicorn
-
 # Import the integrated application package first. Its package root exposes
 # the current backend implementation as one coherent SLAIFI package.
 import applications.slaifi  # noqa: F401
-
+import uvicorn
 from logs.logger import (
     LoggingSettings,
     configure_logging,
     get_logger,
     shutdown_logging,
 )
+
 from slaifi.core.config import get_settings
 from slaifi.core.utils.errors import SlaifiError
-
 
 logger = get_logger("SLAIFI Launcher")
 

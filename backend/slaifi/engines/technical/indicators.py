@@ -50,10 +50,7 @@ def momentum(prices: Sequence[float], period: int) -> AlignedSeries:
     require_positive_integer(period, name="period")
     data = positive_series(prices, minimum=period + 1, name="prices")
     output: list[float | None] = [None] * period
-    output.extend(
-        data[index] / data[index - period] - 1.0
-        for index in range(period, len(data))
-    )
+    output.extend(data[index] / data[index - period] - 1.0 for index in range(period, len(data)))
     return tuple(output)
 
 
@@ -125,9 +122,7 @@ def macd(
     histogram: list[float | None] = []
     for macd_value, signal_value in zip(macd_line, signal_line, strict=True):
         histogram.append(
-            None
-            if macd_value is None or signal_value is None
-            else macd_value - signal_value
+            None if macd_value is None or signal_value is None else macd_value - signal_value
         )
     return MACDResult(tuple(macd_line), tuple(signal_line), tuple(histogram))
 

@@ -77,11 +77,7 @@ def build_positions(trades: Sequence[Trade]) -> tuple[Position, ...]:
     ):
         if state.currency is None:
             continue
-        average_cost = (
-            state.cost_basis / state.quantity
-            if state.quantity > 0
-            else _ZERO
-        )
+        average_cost = state.cost_basis / state.quantity if state.quantity > 0 else _ZERO
         positions.append(
             Position(
                 asset=asset,
@@ -207,13 +203,9 @@ def _validated_price(
     try:
         price = prices[asset]
     except KeyError as exc:
-        raise FinancialCalculationError(
-            f"missing price for {asset.display_symbol}"
-        ) from exc
+        raise FinancialCalculationError(f"missing price for {asset.display_symbol}") from exc
     if price <= 0:
-        raise EngineValidationError(
-            f"price for {asset.display_symbol} must be positive"
-        )
+        raise EngineValidationError(f"price for {asset.display_symbol} must be positive")
     return price
 
 

@@ -70,12 +70,8 @@ class AnalyzeMarketSeries:
         momentum_series = self._feature_or_none(
             len(bars), lambda: indicators.momentum(closes, momentum_period)
         )
-        rsi_series = self._feature_or_none(
-            len(bars), lambda: indicators.rsi(closes, rsi_period)
-        )
-        atr_series = self._feature_or_none(
-            len(bars), lambda: indicators.atr(bars, atr_period)
-        )
+        rsi_series = self._feature_or_none(len(bars), lambda: indicators.rsi(closes, rsi_period))
+        atr_series = self._feature_or_none(len(bars), lambda: indicators.atr(bars, atr_period))
         try:
             macd_result = indicators.macd(closes)
             macd_value = _last(macd_result.macd_line)
@@ -149,13 +145,9 @@ class AnalyzeMarketSeries:
         previous: datetime | None = None
         for bar in bars:
             if bar.asset != asset:
-                raise ValidationError(
-                    "all market bars must identify the asset being analyzed"
-                )
+                raise ValidationError("all market bars must identify the asset being analyzed")
             if previous is not None and bar.end_at <= previous:
-                raise ValidationError(
-                    "market bars must be strictly chronological and unique"
-                )
+                raise ValidationError("market bars must be strictly chronological and unique")
             previous = bar.end_at
 
     @staticmethod

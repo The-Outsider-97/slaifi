@@ -30,17 +30,13 @@ class GetMarketOverview:
         assets: tuple[AssetRef, ...],
     ) -> None:
         if not assets:
-            raise ValidationError(
-                "market overview requires at least one asset"
-            )
+            raise ValidationError("market overview requires at least one asset")
 
         self._provider = provider
         self._assets = assets
 
     async def execute(self) -> MarketOverview:
-        quotes = tuple(
-            await self._provider.get_quotes(self._assets)
-        )
+        quotes = tuple(await self._provider.get_quotes(self._assets))
 
         logger.debug(
             "Market overview assembled from %d quote(s)",

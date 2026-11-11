@@ -18,7 +18,7 @@ def periodic_rate_from_annual(
     require_positive_integer(periods_per_year, name="periods_per_year")
     if not math.isfinite(annual_rate) or annual_rate <= -1.0:
         raise EngineValidationError("annual_rate must be finite and greater than -1")
-    return (1.0 + annual_rate) ** (1.0 / periods_per_year) - 1.0
+    return float((1.0 + annual_rate) ** (1.0 / periods_per_year) - 1.0)
 
 
 def historical_volatility(
@@ -43,9 +43,9 @@ def downside_deviation(
 
     data = finite_series(returns, minimum=1, name="returns")
     target_periodic = periodic_rate_from_annual(target_annual_rate, periods_per_year)
-    mean_squared_downside = sum(
-        min(value - target_periodic, 0.0) ** 2 for value in data
-    ) / len(data)
+    mean_squared_downside = sum(min(value - target_periodic, 0.0) ** 2 for value in data) / len(
+        data
+    )
     return math.sqrt(mean_squared_downside) * math.sqrt(periods_per_year)
 
 
@@ -97,12 +97,10 @@ def sortino_ratio(
         target_annual_rate=target_annual_rate,
     )
     if downside == 0.0:
-        raise FinancialCalculationError(
-            "Sortino ratio is undefined with zero downside deviation"
-        )
-    annualized_excess = statistics.mean(
-        value - target_periodic for value in data
-    ) * periods_per_year
+        raise FinancialCalculationError("Sortino ratio is undefined with zero downside deviation")
+    annualized_excess = (
+        statistics.mean(value - target_periodic for value in data) * periods_per_year
+    )
     return annualized_excess / downside
 
 
@@ -137,24 +135,17 @@ def correlation_matrix(series: Mapping[str, Sequence[float]]) -> CorrelationMatr
     lengths = {len(series[label]) for label in labels}
     if len(lengths) != 1:
         raise EngineValidationError("all correlation series must have equal length")
-    validated = {
-        label: finite_series(series[label], minimum=2, name=label)
-        for label in labels
-    }
+    validated = {label: finite_series(series[label], minimum=2, name=label) for label in labels}
     for label, values in validated.items():
         if statistics.pstdev(values) == 0.0:
-            raise FinancialCalculationError(
-                f"correlation is undefined for constant series {label}"
-            )
+            raise FinancialCalculationError(f"correlation is undefined for constant series {label}")
 
     rows: list[tuple[float, ...]] = []
     for left in labels:
         row: list[float] = []
         for right in labels:
             row.append(
-                1.0
-                if left == right
-                else pearson_correlation(validated[left], validated[right])
+                1.0 if left == right else pearson_correlation(validated[left], validated[right])
             )
         rows.append(tuple(row))
     return CorrelationMatrix(labels=labels, values=tuple(rows))
@@ -168,9 +159,7 @@ def concentration_hhi(weights: Sequence[float]) -> float:
         raise EngineValidationError("concentration weights cannot be negative")
     total = sum(data)
     if total <= 0.0:
-        raise FinancialCalculationError(
-            "concentration is undefined when total weight is zero"
-        )
+        raise FinancialCalculationError("concentration is undefined when total weight is zero")
     normalized = [weight / total for weight in data]
     return sum(weight * weight for weight in normalized)
 

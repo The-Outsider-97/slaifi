@@ -7,17 +7,29 @@ error definitions and intentionally does not re-export Domain or Engine errors.
 from slaifi.core.utils.errors import (
     CalculationError,
     ConfigurationError,
+    ConflictError,
     InfrastructureError,
     IntegrationError,
+    MarketDataError,
+    MarketDataRateLimitedError,
+    MarketDataUnavailableError,
+    NotFoundError,
     SlaifiError,
+    SymbolNotFoundError,
     ValidationError,
 )
 
 __all__ = [
     "CalculationError",
     "ConfigurationError",
+    "ConflictError",
     "InfrastructureError",
     "IntegrationError",
+    "MarketDataError",
+    "MarketDataRateLimitedError",
+    "MarketDataUnavailableError",
+    "NotFoundError",
     "SlaifiError",
+    "SymbolNotFoundError",
     "ValidationError",
 ]

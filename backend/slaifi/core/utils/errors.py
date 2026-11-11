@@ -69,3 +69,42 @@ class IntegrationError(SlaifiError):
 
 class InfrastructureError(SlaifiError):
     """An infrastructure adapter failed outside the financial domain model."""
+
+
+class NotFoundError(SlaifiError):
+    """A requested SLAIFI resource does not exist."""
+
+
+class ConflictError(SlaifiError):
+    """A request conflicts with current state (duplicate identity, stale confirmation, ...)."""
+
+
+class MarketDataError(InfrastructureError):
+    """A market-data provider could not satisfy a request."""
+
+
+class MarketDataUnavailableError(MarketDataError):
+    """The provider is unreachable, timed out, or returned an unusable response."""
+
+    def __init__(self, message: str, **kwargs: object) -> None:
+        kwargs.setdefault("retryable", True)
+        super().__init__(message, **kwargs)  # type: ignore[arg-type]
+
+
+class MarketDataRateLimitedError(MarketDataError):
+    """The provider rejected the request because a rate or credit limit was reached."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        retry_after_seconds: float | None = None,
+        **kwargs: object,
+    ) -> None:
+        kwargs.setdefault("retryable", True)
+        super().__init__(message, **kwargs)  # type: ignore[arg-type]
+        self.retry_after_seconds = retry_after_seconds
+
+
+class SymbolNotFoundError(MarketDataError, NotFoundError):
+    """The provider does not know the requested symbol."""

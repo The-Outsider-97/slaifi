@@ -4,6 +4,7 @@ from decimal import Decimal
 from math import isfinite
 
 from slaifi.domain.goals import (
+    TRADING_DAYS_PER_YEAR,
     FeasibilityStatus,
     IncomeGoalEvaluation,
     IncomePeriod,
@@ -14,6 +15,7 @@ from slaifi.domain.goals import (
 from slaifi.engines.utils.errors import EngineValidationError
 
 _PERIODS_PER_YEAR = {
+    IncomePeriod.DAILY: Decimal(TRADING_DAYS_PER_YEAR),
     IncomePeriod.WEEKLY: Decimal("52"),
     IncomePeriod.MONTHLY: Decimal("12"),
     IncomePeriod.QUARTERLY: Decimal("4"),
@@ -38,41 +40,22 @@ def evaluate_income_goal(
 
     if available_capital < 0:
         raise EngineValidationError("available_capital cannot be negative")
-    if (
-        current_expected_annual_income is not None
-        and current_expected_annual_income < 0
-    ):
-        raise EngineValidationError(
-            "current_expected_annual_income cannot be negative"
-        )
+    if current_expected_annual_income is not None and current_expected_annual_income < 0:
+        raise EngineValidationError("current_expected_annual_income cannot be negative")
     if assumed_annual_yield_rate is not None and (
-        not isfinite(assumed_annual_yield_rate)
-        or assumed_annual_yield_rate < 0.0
+        not isfinite(assumed_annual_yield_rate) or assumed_annual_yield_rate < 0.0
     ):
-        raise EngineValidationError(
-            "assumed_annual_yield_rate must be finite and non-negative"
-        )
+        raise EngineValidationError("assumed_annual_yield_rate must be finite and non-negative")
 
     annual_target = annualize_income_target(target)
-    required_yield = (
-        float(annual_target / available_capital)
-        if available_capital > 0
-        else None
-    )
+    required_yield = float(annual_target / available_capital) if available_capital > 0 else None
     required_capital = None
-    if (
-        assumed_annual_yield_rate is not None
-        and assumed_annual_yield_rate > 0.0
-    ):
-        required_capital = annual_target / Decimal(
-            str(assumed_annual_yield_rate)
-        )
+    if assumed_annual_yield_rate is not None and assumed_annual_yield_rate > 0.0:
+        required_capital = annual_target / Decimal(str(assumed_annual_yield_rate))
 
     expected_income = current_expected_annual_income
     if expected_income is None and assumed_annual_yield_rate is not None:
-        expected_income = available_capital * Decimal(
-            str(assumed_annual_yield_rate)
-        )
+        expected_income = available_capital * Decimal(str(assumed_annual_yield_rate))
 
     if expected_income is None:
         shortfall = None
@@ -111,13 +94,8 @@ def evaluate_return_goal(
             annual_rate_gap=None,
             status=FeasibilityStatus.UNDETERMINED,
         )
-    if (
-        not isfinite(assumed_annual_return_rate)
-        or assumed_annual_return_rate <= -1.0
-    ):
-        raise EngineValidationError(
-            "assumed_annual_return_rate must be finite and greater than -1"
-        )
+    if not isfinite(assumed_annual_return_rate) or assumed_annual_return_rate <= -1.0:
+        raise EngineValidationError("assumed_annual_return_rate must be finite and greater than -1")
     gap = assumed_annual_return_rate - target.annual_rate
     return ReturnGoalEvaluation(
         target_annual_rate=target.annual_rate,

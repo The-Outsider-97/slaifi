@@ -1,7 +1,7 @@
 """Structured application results combining calculations without conflating them."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Mapping
 
 from slaifi.application.contracts import ReasoningResult
 from slaifi.domain.goals import IncomeGoalEvaluation, ReturnGoalEvaluation

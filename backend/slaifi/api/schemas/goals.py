@@ -78,17 +78,13 @@ class FinancialGoalInput(BaseModel):
                 max_leverage=self.constraints.max_leverage,
                 max_short_exposure=self.constraints.max_short_exposure,
                 allowed_asset_classes=frozenset(self.constraints.allowed_asset_classes),
-                prohibited_asset_classes=frozenset(
-                    self.constraints.prohibited_asset_classes
-                ),
+                prohibited_asset_classes=frozenset(self.constraints.prohibited_asset_classes),
             ),
             preferences=GoalPreferences(
                 dca_amount=self.preferences.dca_amount,
                 cash_reserve=self.preferences.cash_reserve,
                 prefers_dividend_income=self.preferences.prefers_dividend_income,
-                preferred_asset_classes=frozenset(
-                    self.preferences.preferred_asset_classes
-                ),
+                preferred_asset_classes=frozenset(self.preferences.preferred_asset_classes),
             ),
         )
 
@@ -134,12 +130,12 @@ class GoalEvaluationResponse(BaseModel):
             )
         returns = None
         if bundle.returns is not None:
-            item = bundle.returns
+            return_item = bundle.returns
             returns = ReturnGoalEvaluationResponse(
-                target_annual_rate=item.target_annual_rate,
-                assumed_annual_rate=item.assumed_annual_rate,
-                annual_rate_gap=item.annual_rate_gap,
-                status=item.status.value,
+                target_annual_rate=return_item.target_annual_rate,
+                assumed_annual_rate=return_item.assumed_annual_rate,
+                annual_rate_gap=return_item.annual_rate_gap,
+                status=return_item.status.value,
             )
         return cls(income=income, returns=returns)
 

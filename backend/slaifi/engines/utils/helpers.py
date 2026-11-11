@@ -59,8 +59,6 @@ def chronological_bars(
     previous_end = None
     for bar in normalized:
         if previous_end is not None and bar.end_at <= previous_end:
-            raise EngineValidationError(
-                "bars must be strictly ordered with unique end timestamps"
-            )
+            raise EngineValidationError("bars must be strictly ordered with unique end timestamps")
         previous_end = bar.end_at
     return normalized

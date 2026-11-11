@@ -1,44 +1,263 @@
-"""Deterministic mock provider used only for tests and explicit demo mode."""
+"""Deterministic mock provider used only for tests and explicit demo mode.
 
+Everything it returns is **illustrative**: quotes carry ``illustrative=True`` and any synthetic
+history is generated deterministically from the symbol, so it is repeatable but is never market
+data. History generation is off by default and enabled explicitly by configuration
+(``SLAIFI_MOCK_ILLUSTRATIVE_HISTORY``); with it off the provider returns no bars, exactly as before.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import math
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
+from logs.logger import get_logger
 
 from slaifi.core.types import CurrencyCode
-from slaifi.domain.market.models import AssetRef, OHLCVBar, PriceQuote
-from logs.logger import get_logger
+from slaifi.domain.assets import AssetClass, AssetId
+from slaifi.domain.market.models import AssetRef, InstrumentInfo, OHLCVBar, PriceQuote
 
 logger = get_logger("SLAIFI Mock Market Data")
 
+_ANCHOR = datetime(2018, 1, 1, tzinfo=UTC)
+
+
+@dataclass(frozen=True, slots=True)
+class _Spec:
+    symbol: str
+    name: str
+    asset_class: AssetClass
+    exchange: str
+    base_price: str
+    annual_drift: float
+    annual_vol: float
+    country: str = "United States"
+    instrument_type: str = "Common Stock"
+    legacy_change_percent: str | None = None
+
+
+_CATALOG: tuple[_Spec, ...] = (
+    _Spec(
+        "SPY",
+        "SPDR S&P 500 ETF Trust (illustrative)",
+        AssetClass.ETF,
+        "NYSE",
+        "100.00",
+        0.08,
+        0.16,
+        instrument_type="ETF",
+        legacy_change_percent="0.42",
+    ),
+    _Spec(
+        "QQQ",
+        "Invesco QQQ Trust (illustrative)",
+        AssetClass.ETF,
+        "NASDAQ",
+        "200.00",
+        0.10,
+        0.21,
+        instrument_type="ETF",
+        legacy_change_percent="-0.18",
+    ),
+    _Spec(
+        "DIA",
+        "SPDR Dow Jones Industrial Average ETF (illustrative)",
+        AssetClass.ETF,
+        "NYSE",
+        "150.00",
+        0.07,
+        0.15,
+        instrument_type="ETF",
+        legacy_change_percent="0.11",
+    ),
+    _Spec(
+        "VIX",
+        "CBOE Volatility Index (illustrative)",
+        AssetClass.INDEX,
+        "CBOE",
+        "20.00",
+        0.0,
+        0.55,
+        instrument_type="Index",
+        legacy_change_percent="0.00",
+    ),
+    _Spec("AAPL", "Apple Inc. (illustrative)", AssetClass.EQUITY, "NASDAQ", "180.00", 0.14, 0.28),
+    _Spec(
+        "MSFT",
+        "Microsoft Corporation (illustrative)",
+        AssetClass.EQUITY,
+        "NASDAQ",
+        "380.00",
+        0.15,
+        0.26,
+    ),
+    _Spec(
+        "GOOGL",
+        "Alphabet Inc. Class A (illustrative)",
+        AssetClass.EQUITY,
+        "NASDAQ",
+        "140.00",
+        0.12,
+        0.29,
+    ),
+    _Spec(
+        "AMZN", "Amazon.com, Inc. (illustrative)", AssetClass.EQUITY, "NASDAQ", "170.00", 0.13, 0.33
+    ),
+    _Spec(
+        "NVDA",
+        "NVIDIA Corporation (illustrative)",
+        AssetClass.EQUITY,
+        "NASDAQ",
+        "450.00",
+        0.30,
+        0.50,
+    ),
+    _Spec("TSLA", "Tesla, Inc. (illustrative)", AssetClass.EQUITY, "NASDAQ", "240.00", 0.10, 0.58),
+    _Spec(
+        "JNJ", "Johnson & Johnson (illustrative)", AssetClass.EQUITY, "NYSE", "155.00", 0.05, 0.16
+    ),
+    _Spec(
+        "KO", "The Coca-Cola Company (illustrative)", AssetClass.EQUITY, "NYSE", "60.00", 0.05, 0.15
+    ),
+    _Spec(
+        "BND",
+        "Vanguard Total Bond Market ETF (illustrative)",
+        AssetClass.ETF,
+        "NASDAQ",
+        "72.00",
+        0.02,
+        0.06,
+        instrument_type="ETF",
+    ),
+    _Spec(
+        "GLD",
+        "SPDR Gold Shares (illustrative)",
+        AssetClass.ETF,
+        "NYSE",
+        "185.00",
+        0.04,
+        0.14,
+        instrument_type="ETF",
+    ),
+    _Spec(
+        "BTC/USD",
+        "Bitcoin / US Dollar (illustrative)",
+        AssetClass.CRYPTO,
+        "Coinbase",
+        "40000.00",
+        0.20,
+        0.70,
+        instrument_type="Digital Currency",
+    ),
+)
+_BY_SYMBOL = {spec.symbol: spec for spec in _CATALOG}
+_DEFAULT = _Spec(
+    "?",
+    "Unknown instrument (illustrative)",
+    AssetClass.UNKNOWN,
+    "",
+    "50.00",
+    0.05,
+    0.25,
+    instrument_type="Unknown",
+)
+
+
+def _uniform(symbol: str, ordinal: int, salt: int) -> float:
+    digest = hashlib.sha256(f"{symbol}|{ordinal}|{salt}".encode()).digest()
+    return (int.from_bytes(digest[:8], "big") + 1) / (2**64 + 2)
+
+
+def _shock(symbol: str, ordinal: int) -> float:
+    """Deterministic standard-normal draw (Box-Muller) for one symbol-day."""
+
+    u1, u2 = _uniform(symbol, ordinal, 1), _uniform(symbol, ordinal, 2)
+    return math.sqrt(-2.0 * math.log(u1)) * math.cos(2.0 * math.pi * u2)
+
+
+def _is_trading_day(day: datetime) -> bool:
+    return day.weekday() < 5
+
 
 class MockMarketDataProvider:
-    """Explicit deterministic test/demo market provider."""
+    """Explicit deterministic test/demo market provider. Never real market data."""
 
     data_mode = "mock"
+    # Symbols outside the illustrative catalogue are rejected by the market service.
+    strict_catalog = True
+    source_name = "mock"
+    # Only daily bars are ever generated; intraday or weekly data would have to be invented.
+    supported_intervals: tuple[str, ...] = ("1day",)
 
-    _prices = {
-        "SPY": ("100.00", "0.42"),
-        "QQQ": ("200.00", "-0.18"),
-        "DIA": ("150.00", "0.11"),
-        "VIX": ("20.00", "0.00"),
-    }
+    def __init__(self, *, illustrative_history: bool = False) -> None:
+        self._illustrative_history = illustrative_history
 
+    # ----------------------------------------------------------------- search
+    async def search_instruments(self, query: str, *, limit: int = 10) -> Sequence[InstrumentInfo]:
+        needle = query.strip().lower()
+        if not needle:
+            return ()
+        hits: list[InstrumentInfo] = []
+        for spec in _CATALOG:
+            if needle in spec.symbol.lower() or needle in spec.name.lower():
+                hits.append(
+                    InstrumentInfo(
+                        asset=AssetId(
+                            spec.symbol, spec.asset_class, spec.exchange, CurrencyCode("USD")
+                        ),
+                        name=spec.name,
+                        country=spec.country,
+                        instrument_type=spec.instrument_type,
+                        illustrative=True,
+                    )
+                )
+        hits.sort(key=lambda info: (info.asset.symbol.lower() != needle, info.asset.symbol))
+        return tuple(hits[: max(1, limit)])
+
+    # ----------------------------------------------------------------- quotes
     async def get_quotes(self, assets: Sequence[AssetRef]) -> Sequence[PriceQuote]:
         observed_at = datetime.now(UTC)
-        raw_payload = [self._raw_quote(asset, observed_at) for asset in assets]
-        quotes = [
-            self._normalize(item, asset)
-            for item, asset in zip(
-                raw_payload,
-                assets,
-                strict=True,
-            )
-        ]
-
+        quotes = [self._quote(asset, observed_at) for asset in assets]
         logger.debug("Generated %d deterministic mock quote(s)", len(quotes))
         return quotes
 
+    def _quote(self, asset: AssetRef, observed_at: datetime) -> PriceQuote:
+        spec = _BY_SYMBOL.get(asset.symbol, _DEFAULT)
+        base = Decimal(spec.base_price)
+        change_rate: float | None
+        previous: Decimal | None = None
+        if self._illustrative_history and spec is not _DEFAULT:
+            closes = self._closes(spec, observed_at, 2)
+            price = closes[-1]
+            previous = closes[-2] if len(closes) > 1 else None
+            change_rate = float(price / previous - 1) if previous else None
+            if spec.legacy_change_percent is not None:
+                change_rate = float(Decimal(spec.legacy_change_percent) / Decimal("100"))
+        else:
+            price = base
+            change_rate = (
+                float(Decimal(spec.legacy_change_percent) / Decimal("100"))
+                if spec.legacy_change_percent
+                else (0.0 if spec is _DEFAULT else None)
+            )
+        return PriceQuote(
+            asset=asset,
+            price=price,
+            change_rate=change_rate,
+            currency=CurrencyCode("USD"),
+            observed_at=observed_at,
+            source="mock",
+            is_market_open=None,
+            delayed=None,
+            previous_close=previous,
+            illustrative=True,
+        )
+
+    # ----------------------------------------------------------------- history
     async def get_bars(
         self,
         asset: AssetRef,
@@ -47,33 +266,72 @@ class MockMarketDataProvider:
         end_at: datetime,
         interval: str = "1day",
     ) -> Sequence[OHLCVBar]:
-        # Deliberately empty.
-        #
-        # The frontend must show "historical data unavailable"
-        # instead of drawing fabricated chart data.
-        return ()
+        # Empty unless illustrative history is explicitly enabled: the UI then shows
+        # "historical data unavailable" rather than drawing invented data.
+        if not self._illustrative_history or interval != "1day":
+            return ()
+        spec = _BY_SYMBOL.get(asset.symbol)
+        if spec is None:
+            return ()
+        today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        days = self._trading_days(today)
+        closes = self._price_path(spec, days)
+        bars: list[OHLCVBar] = []
+        for index, (day, close) in enumerate(zip(days, closes, strict=True)):
+            if day < start_at.replace(hour=0, minute=0, second=0, microsecond=0) or day > end_at:
+                continue
+            previous = closes[index - 1] if index else close
+            ordinal = (day - _ANCHOR).days
+            gap = Decimal(str(round(0.002 * _shock(spec.symbol, ordinal + 10_000), 6)))
+            open_price = max(
+                Decimal("0.01"), (previous * (Decimal(1) + gap)).quantize(Decimal("0.0001"))
+            )
+            spread = Decimal(
+                str(abs(round(0.006 * _shock(spec.symbol, ordinal + 20_000), 6)))
+            ) + Decimal("0.001")
+            high = max(open_price, close) * (Decimal(1) + spread)
+            low = min(open_price, close) * (Decimal(1) - spread)
+            volume = Decimal(int(1_000_000 * (0.6 + _uniform(spec.symbol, ordinal, 3))))
+            bars.append(
+                OHLCVBar(
+                    asset=asset,
+                    start_at=day,
+                    end_at=day + timedelta(days=1),
+                    open=open_price,
+                    high=high.quantize(Decimal("0.0001")),
+                    low=low.quantize(Decimal("0.0001")),
+                    close=close,
+                    volume=volume,
+                )
+            )
+        return tuple(bars)
 
-    def _raw_quote(self, asset: AssetRef, observed_at: datetime) -> dict[str, str]:
-        price, change = self._prices.get(asset.symbol, ("50.00", "0.00"))
-
-        return {
-            "ticker": asset.symbol,
-            "last": price,
-            "pct_change": change,
-            "currency_code": "USD",
-            "captured_at": observed_at.isoformat(),
-        }
+    def _closes(self, spec: _Spec, now: datetime, count: int) -> list[Decimal]:
+        today = now.astimezone(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        days = self._trading_days(today)
+        return self._price_path(spec, days)[-count:]
 
     @staticmethod
-    def _normalize(payload: dict[str, str], asset: AssetRef) -> PriceQuote:
-        return PriceQuote(
-            asset=asset,
-            price=Decimal(payload["last"]),
-            change_rate=float(
-                Decimal(payload["pct_change"])
-                / Decimal("100")
-            ),
-            currency=CurrencyCode(payload["currency_code"]),
-            observed_at=datetime.fromisoformat(payload["captured_at"]),
-            source="mock",
-        )
+    def _trading_days(today: datetime) -> list[datetime]:
+        days: list[datetime] = []
+        day = _ANCHOR
+        while day <= today:
+            if _is_trading_day(day):
+                days.append(day)
+            day += timedelta(days=1)
+        return days
+
+    @staticmethod
+    def _price_path(spec: _Spec, days: list[datetime]) -> list[Decimal]:
+        """Closing path scaled so the most recent close equals the catalogue base price."""
+
+        daily_drift = spec.annual_drift / 252.0
+        daily_vol = spec.annual_vol / math.sqrt(252.0)
+        level = 0.0
+        raw: list[float] = []
+        for day in days:
+            ordinal = (day - _ANCHOR).days
+            level += daily_drift - 0.5 * daily_vol**2 + daily_vol * _shock(spec.symbol, ordinal)
+            raw.append(level)
+        base = float(Decimal(spec.base_price))
+        return [Decimal(str(round(base * math.exp(value - raw[-1]), 4))) for value in raw]

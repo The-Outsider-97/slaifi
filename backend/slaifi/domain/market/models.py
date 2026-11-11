@@ -22,6 +22,12 @@ class PriceQuote:
     observed_at: datetime
     source: str
     change_rate: float | None = None
+    # Provenance flags. ``None`` means the provider did not say; they are never guessed.
+    is_market_open: bool | None = None
+    delayed: bool | None = None
+    previous_close: Decimal | None = None
+    # True for synthetic demo data (mock provider). Illustrative quotes are never market data.
+    illustrative: bool = False
 
     def __post_init__(self) -> None:
         if self.price <= 0:
@@ -35,6 +41,23 @@ class PriceQuote:
         object.__setattr__(self, "source", source)
         if self.change_rate is not None and not isfinite(self.change_rate):
             raise DomainValidationError("change_rate must be finite when supplied")
+        if self.previous_close is not None and self.previous_close <= 0:
+            raise DomainValidationError("previous_close must be positive when supplied")
+
+
+@dataclass(frozen=True, slots=True)
+class InstrumentInfo:
+    """Search result describing a tradable or trackable instrument."""
+
+    asset: AssetId
+    name: str
+    country: str | None = None
+    instrument_type: str | None = None
+    illustrative: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.name.strip():
+            raise DomainValidationError("instrument name must not be empty")
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,4 +104,12 @@ class MarketSnapshot:
             seen.add(quote.asset)
 
 
-__all__ = ["AssetClass", "AssetId", "AssetRef", "MarketSnapshot", "OHLCVBar", "PriceQuote"]
+__all__ = [
+    "AssetClass",
+    "AssetId",
+    "AssetRef",
+    "InstrumentInfo",
+    "MarketSnapshot",
+    "OHLCVBar",
+    "PriceQuote",
+]

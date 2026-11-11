@@ -1,8 +1,9 @@
 """SLAIFI-owned contract for contextual financial reasoning."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, Mapping, Protocol
+from typing import Any, Protocol
 
 from slaifi.core.utils.errors import IntegrationError
 
