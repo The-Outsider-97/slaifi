@@ -1,7 +1,7 @@
 SLAIFI — SLAI Financial Intelligence
 SLAIFI combines normalized financial data, deterministic quantitative analysis, explicit risk/goal evaluation, and bounded SLAI reasoning into explainable decision support.
 
-SLAIFI is decision-support software. Illustrative scenarios, forecasts, targets, confidence values and interpretations are uncertain and are not guarantees of financial outcomes. The current product does not execute trades.
+SLAIFI is decision-support software. Illustrative scenarios, forecasts, targets, confidence values and interpretations are uncertain and are not guarantees of financial outcomes. SLAIFI offers **paper trading only**: simulated orders against virtual cash. Real-money trading does not exist in the code and cannot be enabled.
 
 Runtime location
 SLAIFI is designed to live at:
@@ -10,7 +10,7 @@ SLAI/
 ├── run_slaifi.py
 ├── logs/
 ├── src/
-└── application/
+└── applications/
     └── slaifi/
 The repository copy of run_slaifi.py is written for its final location at SLAI/run_slaifi.py.
 
@@ -32,15 +32,21 @@ SLAI integration adapter
 AgentFactory → Reasoning Agent ↔ SharedMemory
 Core, Domain and Engines never depend on FastAPI, React or SLAI agents. The Reasoning Agent interprets already-calculated evidence and cannot replace Engine calculations.
 
-Market Overview product state
-The React Market Overview implements the supplied SLAIFI visual design: fixed desktop workspace navigation, summary cards, understated performance chart, SLAI insight, market watch, goal guidance and educational footer, with responsive sidebar/panel behavior.
+Product state
+Sections: Market Overview, Stock Analysis, My Portfolio, Paper Trading, SLAI Advisor, Strategies & Goals, Settings (plus SLAI Academy).
+All market figures carry provider, observation time, delay and a mode badge. The default provider is a mock whose data is labelled illustrative everywhere and never yields a BUY/SELL; configure Twelve Data for real quotes.
+Recommendations are limited to BUY/HOLD/SELL/WATCH/AVOID/REDUCE/DCA or an explicit "insufficient evidence"; no probabilities, confidence scores or expected returns are manufactured. The paper-trading ledger is SQLite (via SLAI's Database tool), is the single source of truth and is never SharedMemory.
 
-Data provenance is explicit. The current market provider is a mock provider, so screenshot-aligned market levels, historical chart data and market-watch signals are labelled illustrative. SLAI availability is never faked: the insight CTA becomes operational only when the status endpoint reports an available/degraded runtime, and an actual insight request flows through SLAIFI Engines before the Reasoning Agent receives evidence.
-
-See docs/architecture/frontend-runtime.md and docs/architecture/slai-integration.md for the final data and agent flows.
+Documentation
+- docs/REUSE_AUDIT.md — repository audit and what is reused from SLAI
+- docs/guides/ — setup and configuration, operation, troubleshooting
+- docs/finance/methodology.md — how recommendations, predictions, back-tests, paper trading, goals and the advisor work
+- docs/api/finance-api.md — endpoint reference
+- docs/VERIFICATION.md — verification results and outstanding issues
+- CHANGES.md — change summary
 
 Backend development
-Requires Python 3.12+ and the wider SLAI repository when exercising operational logging/agent integration.
+Requires Python 3.11+ and the wider SLAI repository when exercising operational logging/agent integration.
 
 python -m venv .venv
 # Windows: .venv\Scripts\activate

@@ -1,11 +1,11 @@
-# Recommendation Model — Design Contract
+# Recommendation Model
 
-This document defines the boundary before recommendation logic is implemented.
+> The original design contract for this document listed actions such as STRONG_BUY, SHORT and COVER and
+> fields such as confidence and expected return. The implemented model deliberately does **not** produce
+> them. See [methodology.md](methodology.md) for the implemented contract.
 
-A recommendation is a reproducible decision-support record, not a free-form label. Candidate actions may include `BUY`, `STRONG_BUY`, `HOLD`, `DCA`, `REDUCE`, `PARTIAL_SELL`, `SELL`, `SHORT`, `COVER`, `AVOID`, and `WATCH`.
-
-The engine must eventually consume approved, separately identifiable evidence from prediction, technical/fundamental analysis, risk, portfolio exposure, strategy compatibility, user goals, market regime, uncertainty, and SLAI reasoning.
-
-At minimum a recommendation record will carry action, asset, timestamp, horizon, goal context, confidence, uncertainty, expected return, expected downside, risk level, supporting signals, conflicting signals, invalidation conditions, reasoning provenance, and model versions.
-
-No action label will be implemented until its scoring/decision policy and tests are mathematically specified.
+Implemented actions: `BUY`, `HOLD`, `SELL`, `WATCH`, `AVOID`, `REDUCE`, `DCA`, or an explicit
+**insufficient evidence** result. A record carries the rule score (an aggregate in [-1, 1], not a probability),
+risk level, horizon, supporting and conflicting signals, constraint findings, invalidation conditions,
+model versions and data provenance. A prediction interval is attached only when walk-forward validation
+of its coverage passed. Confidence scores, expected returns and accuracy figures are never fabricated.

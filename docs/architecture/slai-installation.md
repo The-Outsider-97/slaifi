@@ -20,7 +20,7 @@ cd slaifi
 python -m pip install -e ".[dev]"
 ```
 
-The Python package remains `slaifi` and is defined under `application/slaifi/backend/slaifi`. Standard installation makes it importable regardless of the current working directory; SLAIFI does not use `sys.path` mutation or `os.getcwd()` assumptions.
+The Python package remains `slaifi` and is defined under `applications/slaifi/backend/slaifi`. Standard installation makes it importable regardless of the current working directory; SLAIFI does not use `sys.path` mutation or `os.getcwd()` assumptions.
 
 The repository-delivered `run_slaifi.py` is written for its final location at `SLAI/run_slaifi.py`. Move that file to the SLAI root without changing its imports. It reads host/port and environment from SLAIFI's Settings layer and configures logging through `SLAI/logs/logger.py`.
 

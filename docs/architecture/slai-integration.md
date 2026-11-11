@@ -1,6 +1,6 @@
 # SLAI Integration Boundary
 
-SLAIFI lives at `SLAI/application/slaifi/`. Full SLAI integration means integration through explicit runtime boundaries, not direct SLAI imports throughout financial code.
+SLAIFI lives at `SLAI/applications/slaifi/`. Full SLAI integration means integration through explicit runtime boundaries, not direct SLAI imports throughout financial code.
 
 ## Authority and dependency direction
 
