@@ -329,11 +329,24 @@ class SlaiFinancialReasoner:
             self._initialization_error = None
             return True
         except Exception as exc:
-            self._initialization_error = (
-                f"SLAI runtime unavailable: {type(exc).__name__}: {exc}"
-            )
+            self._initialization_error = f"SLAI runtime unavailable: {type(exc).__name__}: {exc}"
             logger.warning("%s", self._initialization_error)
             return False
+
+    def agent_for(self, name: str) -> Any:
+        """Return a factory-managed SLAI agent (shared runtime) for other SLAIFI adapters.
+
+        Lets the safety adapter reuse this adapter's AgentFactory and SharedMemory instead of
+        creating a second runtime.
+        """
+
+        if not self._enabled:
+            raise ReasoningUnavailableError("SLAI integration is disabled")
+        if not self._ensure_runtime():
+            raise ReasoningUnavailableError(
+                self._initialization_error or "SLAI runtime unavailable"
+            )
+        return self._agent(name)
 
     def _agent(self, name: str) -> Any:
         if name not in self._agents:
@@ -495,7 +508,13 @@ class SlaiFinancialReasoner:
                 if isinstance(factory_health, Mapping):
                     payload["factory"] = {
                         key: factory_health.get(key)
-                        for key in ("status", "health", "lifecycle", "registered_agents", "active_agents")
+                        for key in (
+                            "status",
+                            "health",
+                            "lifecycle",
+                            "registered_agents",
+                            "active_agents",
+                        )
                         if key in factory_health
                     }
         memory_health = getattr(self._shared_memory, "health_check", None)
@@ -565,9 +584,7 @@ def _reasoning_metadata(result: Mapping[str, Any]) -> dict[str, Any]:
     selection = result.get("selection")
     selection_mapping = selection if isinstance(selection, Mapping) else {}
     strategy_value = (
-        selection_mapping.get("resolved")
-        or result.get("reasoning_type")
-        or result.get("strategy")
+        selection_mapping.get("resolved") or result.get("reasoning_type") or result.get("strategy")
     )
     confidence_value: float | None = None
     confidence = result.get("confidence")
@@ -585,11 +602,11 @@ def _reasoning_metadata(result: Mapping[str, Any]) -> dict[str, Any]:
         "outcome": str(result["outcome"]) if result.get("outcome") not in (None, "") else None,
         "degraded": bool(result.get("degraded", False)),
         "validation_status": (
-            str(validation_value).strip().lower()
-            if validation_value not in (None, "")
-            else None
+            str(validation_value).strip().lower() if validation_value not in (None, "") else None
         ),
-        "stop_reason": str(result["stop_reason"]) if result.get("stop_reason") not in (None, "") else None,
+        "stop_reason": str(result["stop_reason"])
+        if result.get("stop_reason") not in (None, "")
+        else None,
     }
 
 
@@ -602,11 +619,12 @@ def _reasoning_warnings(result: Mapping[str, Any]) -> tuple[str, ...]:
     if validation_status in {"failed", "partial", "unavailable"}:
         warnings.append(f"SLAI reasoning validation status: {validation_status}.")
     contradictions = result.get("contradictions")
-    if isinstance(contradictions, Sequence) and not isinstance(contradictions, (str, bytes)):
-        if contradictions:
-            warnings.append(
-                f"SLAI reasoning reported {len(contradictions)} conflicting signal(s)."
-            )
+    if (
+        isinstance(contradictions, Sequence)
+        and not isinstance(contradictions, (str, bytes))
+        and contradictions
+    ):
+        warnings.append(f"SLAI reasoning reported {len(contradictions)} conflicting signal(s).")
     fallback = result.get("fallback")
     if isinstance(fallback, Mapping) and bool(fallback.get("used", False)):
         warnings.append("SLAI reasoning used a fallback path.")

@@ -39,8 +39,7 @@ def rolling_returns(prices: Sequence[float], window: int) -> AlignedSeries:
     values = positive_series(prices, minimum=window + 1, name="prices")
     result: list[float | None] = [None] * window
     result.extend(
-        values[index] / values[index - window] - 1.0
-        for index in range(window, len(values))
+        values[index] / values[index - window] - 1.0 for index in range(window, len(values))
     )
     return tuple(result)
 
@@ -66,8 +65,7 @@ def rolling_max(values: Sequence[float], window: int) -> AlignedSeries:
     data = finite_series(values, minimum=window, name="values")
     result: list[float | None] = [None] * (window - 1)
     result.extend(
-        max(data[index - window + 1 : index + 1])
-        for index in range(window - 1, len(data))
+        max(data[index - window + 1 : index + 1]) for index in range(window - 1, len(data))
     )
     return tuple(result)
 
@@ -85,8 +83,7 @@ def rolling_volatility(
         require_positive_integer(periods_per_year, name="periods_per_year")
     prices_tuple = positive_series(prices, minimum=window + 1, name="prices")
     raw_returns = [
-        prices_tuple[index] / prices_tuple[index - 1] - 1.0
-        for index in range(1, len(prices_tuple))
+        prices_tuple[index] / prices_tuple[index - 1] - 1.0 for index in range(1, len(prices_tuple))
     ]
     scale = math.sqrt(periods_per_year) if periods_per_year is not None else 1.0
     result: list[float | None] = [None] * window

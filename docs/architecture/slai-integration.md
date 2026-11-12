@@ -1,6 +1,6 @@
 # SLAI Integration Boundary
 
-SLAIFI lives at `SLAI/application/slaifi/`. Full SLAI integration means integration through explicit runtime boundaries, not direct SLAI imports throughout financial code.
+SLAIFI lives at `SLAI/applications/slaifi/`. Full SLAI integration means integration through explicit runtime boundaries, not direct SLAI imports throughout financial code.
 
 ## Authority and dependency direction
 
@@ -37,6 +37,19 @@ The adapter uses the real SLAI APIs:
 - `AgentFactory.release(agent_type)` releases an adapter-owned agent;
 - SharedMemory `set(..., ttl=..., tags=...)` supports the SLAIFI transaction records;
 - Reasoning Agent runtime/health data is used for status rather than inferred from import success.
+
+## Operations sent to SLAI
+
+All go through `RecommendationService.run_reasoner(request, purpose)` (guard + safety review, labelled interpretation, optional):
+
+| Operation | Purpose |
+|---|---|
+| `recommendation_explanation` | explain a deterministic recommendation; its uncertainty block now carries the measured track record (verdict, decisive results, hit rate) |
+| `goal_plan_review` | read a goal's figures, plan and progress in plain language (`POST goal-tracker/{id}/review`) |
+| `strategy_adaptation_review` | comment on rule-based strategy suggestions; constraint `never_suggest_more_risk` (`GET strategies/{id}/adaptations?explain=true`) |
+| advisor / guidance operations | unchanged |
+
+See `docs/finance/learning-and-adaptation.md`. A SLAI reply that states probabilities or guarantees is withheld, not shown.
 
 ## Logging ownership
 

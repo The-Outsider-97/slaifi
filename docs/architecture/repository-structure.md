@@ -4,16 +4,18 @@ SLAIFI is an application inside the wider SLAI repository. Only directories with
 
 ```text
 SLAI/
-├── run_slaifi.py                     # root process launcher
 ├── logs/
 │   └── logger.py                     # canonical logging implementation
 ├── src/                              # wider SLAI runtime
-└── application/
+└── applications/
     └── slaifi/
-        ├── run_slaifi.py             # delivery/reference copy; move to SLAI root
+        ├── __main__.py               # python -m applications.slaifi
+        ├── package.json              # npm run build (builds the web UI into dist/)
+        ├── configs/config.yaml       # typed settings, read through SLAI's ConfigRepository
         ├── pyproject.toml
         ├── backend/
         │   └── slaifi/
+        │       ├── launcher.py       # start-up on the shared SLAI tools kit
         │       ├── core/
         │       │   ├── config/
         │       │   ├── exceptions/   # Core-only compatibility re-export

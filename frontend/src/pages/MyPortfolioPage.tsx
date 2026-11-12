@@ -265,6 +265,18 @@ export function MyPortfolioPage() {
           <span className="snapshot-note">Valued {new Date(snapshot.as_of).toLocaleString()} · {currency}</span>
         </header>
 
+        {dashboard.portfolio.price_basis?.mode === "last_known" ? (
+          <div className="inline-alert" role="status" data-testid="portfolio-last-known">
+            <strong>Valued at last known prices.</strong> No market-data source could be reached for{" "}
+            {dashboard.portfolio.price_basis.last_known_symbols.join(", ")}; the most recent real price
+            SLAIFI saved was used (oldest observation{" "}
+            {dashboard.portfolio.price_basis.oldest_observed_at
+              ? new Date(dashboard.portfolio.price_basis.oldest_observed_at).toLocaleString()
+              : "unknown"}
+            ).
+          </div>
+        ) : null}
+
         <section className="summary-grid" aria-label="Portfolio summary">
           <PortfolioMetric label="Portfolio value" value={formatMoney(snapshot.total_value, currency)} detail="Current valuation" />
           <PortfolioMetric label="Invested assets" value={formatMoney(snapshot.securities_market_value, currency)} detail="Securities market value" />

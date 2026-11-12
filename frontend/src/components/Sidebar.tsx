@@ -11,6 +11,21 @@ type SidebarProps = {
   onNavigate: () => void;
 };
 
+const NAV_ITEMS: {
+  page: AppPage;
+  href: string;
+  label: string;
+  icon: string;
+}[] = [
+  { page: "market", href: "#/market", label: "Market overview", icon: "▥" },
+  { page: "analysis", href: "#/analysis", label: "Stock analysis", icon: "◔" },
+  { page: "portfolio", href: "#/portfolio", label: "My portfolio", icon: "▣" },
+  { page: "paper", href: "#/paper", label: "Paper trading", icon: "⇄" },
+  { page: "advisor", href: "#/advisor", label: "SLAI Advisor", icon: "✦" },
+  { page: "strategy", href: "#/strategy", label: "Strategies & goals", icon: "◎" },
+  { page: "settings", href: "#/settings", label: "Settings", icon: "⚙" },
+];
+
 function navClass(
   active: boolean,
 ) {
@@ -62,55 +77,31 @@ export function Sidebar({
           className="sidebar__nav"
           aria-label="Primary navigation"
         >
-          <a
-            className={navClass(
-              currentPage ===
-                "market",
-            )}
-            href="#/market"
-            aria-current={
-              currentPage ===
-              "market"
-                ? "page"
-                : undefined
-            }
-            onClick={onNavigate}
-          >
-            <span
-              className="nav-icon"
-              aria-hidden="true"
+          {NAV_ITEMS.map((item) => (
+            <a
+              key={item.page}
+              className={navClass(
+                currentPage === item.page,
+              )}
+              href={item.href}
+              aria-current={
+                currentPage === item.page
+                  ? "page"
+                  : undefined
+              }
+              onClick={onNavigate}
             >
-              ▥
-            </span>
-            <span>
-              Market overview
-            </span>
-          </a>
-
-          <a
-            className={navClass(
-              currentPage ===
-                "portfolio",
-            )}
-            href="#/portfolio"
-            aria-current={
-              currentPage ===
-              "portfolio"
-                ? "page"
-                : undefined
-            }
-            onClick={onNavigate}
-          >
-            <span
-              className="nav-icon"
-              aria-hidden="true"
-            >
-              ▣
-            </span>
-            <span>
-              My portfolio
-            </span>
-          </a>
+              <span
+                className="nav-icon"
+                aria-hidden="true"
+              >
+                {item.icon}
+              </span>
+              <span>
+                {item.label}
+              </span>
+            </a>
+          ))}
 
           <a
             className="nav-item"

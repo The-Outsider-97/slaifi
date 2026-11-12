@@ -1,9 +1,17 @@
 """Financial goal domain."""
 
 from slaifi.domain.goals.models import (
+    TRADING_DAYS_PER_YEAR,
     FeasibilityStatus,
     FinancialGoal,
+    GoalBasis,
+    GoalFeasibilityReport,
+    GoalFinding,
+    GoalPlan,
     GoalPreferences,
+    GoalProgress,
+    GoalScenario,
+    GoalSpec,
     IncomeGoalEvaluation,
     IncomePeriod,
     IncomeTarget,
@@ -13,9 +21,17 @@ from slaifi.domain.goals.models import (
 )
 
 __all__ = [
+    "TRADING_DAYS_PER_YEAR",
     "FeasibilityStatus",
     "FinancialGoal",
+    "GoalBasis",
+    "GoalFeasibilityReport",
+    "GoalFinding",
+    "GoalPlan",
     "GoalPreferences",
+    "GoalProgress",
+    "GoalScenario",
+    "GoalSpec",
     "IncomeGoalEvaluation",
     "IncomePeriod",
     "IncomeTarget",

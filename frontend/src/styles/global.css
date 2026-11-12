@@ -129,7 +129,7 @@ html[data-theme="light"] .topbar { background: rgba(242,243,242,.94); }
 .asset-filter { height: 29px; padding: 0 29px 0 11px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface-hover); color: var(--text-secondary); font-size: 10px; }
 .watch-note { margin-top: 8px; color: var(--text-muted); font-size: 9px; }
 .watch-table { margin-top: 14px; }
-.watch-row { min-height: 57px; display: grid; grid-template-columns: minmax(190px, 1.6fr) .58fr .64fr .82fr 26px; align-items: center; gap: 12px; border-top: 1px solid var(--border); font-size: 11px; }
+.watch-row { min-height: 57px; display: grid; grid-template-columns: minmax(190px, 1.6fr) .58fr .64fr .82fr 78px; align-items: center; gap: 12px; border-top: 1px solid var(--border); font-size: 11px; }
 .watch-row--header { min-height: 31px; border-top: 0; color: var(--text-muted); font-size: 9px; }
 .watch-asset { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .ticker-badge { width: 28px; height: 28px; display: grid; place-items: center; flex: 0 0 auto; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-hover); font-weight: 700; }

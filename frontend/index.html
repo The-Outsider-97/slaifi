@@ -5,17 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#000000" />
     <title>SLAIFI — Financial Intelligence</title>
-    <script>
-      (() => {
-        try {
-          const stored = localStorage.getItem("slaifi-theme");
-          const preferred = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
-          document.documentElement.dataset.theme = stored === "light" || stored === "dark" ? stored : preferred;
-        } catch {
-          document.documentElement.dataset.theme = "dark";
-        }
-      })();
-    </script>
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>

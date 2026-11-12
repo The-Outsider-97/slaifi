@@ -50,23 +50,42 @@ def build_positions(trades: Sequence[Trade]) -> tuple[Position, ...]:
                 "mixed trade currencies require an explicit FX conversion layer"
             )
 
+        name = trade.asset.display_symbol
+        gross = trade.quantity * trade.unit_price
         if trade.side is TradeSide.BUY:
-            state.cost_basis += trade.quantity * trade.unit_price + trade.fee
+            if state.quantity < 0:
+                raise FinancialCalculationError(f"{name} is short; use cover, not buy")
+            state.cost_basis += gross + trade.fee
             state.quantity += trade.quantity
-            continue
-
-        if trade.quantity > state.quantity:
-            raise FinancialCalculationError(
-                f"sell quantity exceeds long position for {trade.asset.display_symbol}"
-            )
-        if state.quantity <= 0:
-            raise FinancialCalculationError("cannot sell from an empty position")
-
-        average_cost = state.cost_basis / state.quantity
-        proceeds = trade.quantity * trade.unit_price - trade.fee
-        state.realized_pnl += proceeds - average_cost * trade.quantity
-        state.quantity -= trade.quantity
-        state.cost_basis -= average_cost * trade.quantity
+        elif trade.side is TradeSide.SELL:
+            if state.quantity <= 0:
+                raise FinancialCalculationError(
+                    "cannot sell from an empty position"
+                    if state.quantity == 0
+                    else f"{name} is short; use cover, not sell"
+                )
+            if trade.quantity > state.quantity:
+                raise FinancialCalculationError(f"sell quantity exceeds long position for {name}")
+            average_cost = state.cost_basis / state.quantity
+            state.realized_pnl += (gross - trade.fee) - average_cost * trade.quantity
+            state.quantity -= trade.quantity
+            state.cost_basis -= average_cost * trade.quantity
+        elif trade.side is TradeSide.SHORT:
+            if state.quantity > 0:
+                raise FinancialCalculationError(f"{name} is long; sell it before shorting")
+            # cost_basis holds the net proceeds received for the shares still owed.
+            state.cost_basis += gross - trade.fee
+            state.quantity -= trade.quantity
+        else:  # COVER
+            if state.quantity >= 0:
+                raise FinancialCalculationError(f"cannot cover {name}: there is no short position")
+            owed = -state.quantity
+            if trade.quantity > owed:
+                raise FinancialCalculationError(f"cover quantity exceeds short position for {name}")
+            average_proceeds = state.cost_basis / owed
+            state.realized_pnl += average_proceeds * trade.quantity - (gross + trade.fee)
+            state.quantity += trade.quantity
+            state.cost_basis -= average_proceeds * trade.quantity
         if state.quantity == 0:
             state.cost_basis = _ZERO
 
@@ -77,11 +96,7 @@ def build_positions(trades: Sequence[Trade]) -> tuple[Position, ...]:
     ):
         if state.currency is None:
             continue
-        average_cost = (
-            state.cost_basis / state.quantity
-            if state.quantity > 0
-            else _ZERO
-        )
+        average_cost = state.cost_basis / abs(state.quantity) if state.quantity != 0 else _ZERO
         positions.append(
             Position(
                 asset=asset,
@@ -105,7 +120,7 @@ def cash_balance(
     for trade in portfolio.trades:
         _require_currency(trade.currency, portfolio.base_currency)
         gross = trade.quantity * trade.unit_price
-        if trade.side is TradeSide.BUY:
+        if trade.side in (TradeSide.BUY, TradeSide.COVER):
             balance -= gross + trade.fee
         else:
             balance += gross - trade.fee
@@ -135,14 +150,14 @@ def portfolio_weights(
     positions: Sequence[Position],
     prices: Mapping[AssetId, Decimal],
 ) -> dict[AssetId, float]:
-    """Return invested-asset weights; closed positions are excluded."""
+    """Return invested-asset weights by absolute market value; closed positions are excluded."""
 
     values: dict[AssetId, Decimal] = {}
     for position in positions:
         if position.quantity == 0:
             continue
         price = _validated_price(position.asset, prices)
-        values[position.asset] = position.quantity * price
+        values[position.asset] = abs(position.quantity) * price
     total = sum(values.values(), _ZERO)
     if total == 0:
         return {}
@@ -178,7 +193,7 @@ def value_portfolio(
             continue
         price = _validated_price(position.asset, prices)
         market_value = raw_values[position.asset]
-        weight = float(market_value / total_value) if total_value > 0 else None
+        weight = float(market_value / total_value) if total_value > 0 else None  # signed
         valuations.append(
             PositionValuation(
                 position=position,
@@ -207,13 +222,9 @@ def _validated_price(
     try:
         price = prices[asset]
     except KeyError as exc:
-        raise FinancialCalculationError(
-            f"missing price for {asset.display_symbol}"
-        ) from exc
+        raise FinancialCalculationError(f"missing price for {asset.display_symbol}") from exc
     if price <= 0:
-        raise EngineValidationError(
-            f"price for {asset.display_symbol} must be positive"
-        )
+        raise EngineValidationError(f"price for {asset.display_symbol} must be positive")
     return price
 
 

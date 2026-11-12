@@ -190,8 +190,18 @@ class RiskStatisticsResponse(BaseModel):
     concentration_hhi: float | None
 
 
+class PortfolioPriceBasis(BaseModel):
+    """Where the prices behind a valuation came from."""
+
+    mode: str  # live | last_known | none
+    sources: list[str] = []
+    last_known_symbols: list[str] = []
+    oldest_observed_at: datetime | None = None
+
+
 class PortfolioAnalysisResponse(BaseModel):
     snapshot: PortfolioSnapshotResponse
+    price_basis: PortfolioPriceBasis | None = None
     risk: RiskStatisticsResponse | None
     goals: GoalEvaluationResponse | None
     reasoning: ReasoningResponse | None

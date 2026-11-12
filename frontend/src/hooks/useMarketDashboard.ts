@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   analyzeMarket,
   createRequestId,
-  fetchMarketHistory,
   fetchMarketOverview,
   fetchSlaiStatus,
 } from "../services/api";
@@ -12,7 +11,6 @@ import type {
   MarketAnalysisResponse,
   MarketHistory,
   MarketOverview,
-  MarketRange,
   SlaiRuntimeStatus,
 } from "../types/market";
 
@@ -47,15 +45,15 @@ function buildAnalysisRequest(
   };
 }
 
-export function useMarketDashboard() {
+/**
+ * The overview quotes, the SLAI status and the SLAI reading of the instrument on the chart.
+ * The chart owns the price history; it hands the first instrument's bars here as ``history``.
+ */
+export function useMarketDashboard(history: MarketHistory | null) {
   const [overview, setOverview] = useState<MarketOverview | null>(null);
   const [slai, setSlai] = useState<SlaiRuntimeStatus | null>(null);
-  const [range, setRange] = useState<MarketRange>("3M");
-  const [history, setHistory] = useState<MarketHistory | null>(null);
   const [loading, setLoading] = useState(true);
-  const [historyLoading, setHistoryLoading] = useState(false);
   const [marketError, setMarketError] = useState<string | null>(null);
-  const [historyError, setHistoryError] = useState<string | null>(null);
   const [slaiError, setSlaiError] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<MarketAnalysisResponse | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
@@ -100,45 +98,16 @@ export function useMarketDashboard() {
     return () => controller.abort();
   }, []);
 
-  const primaryQuote = overview?.quotes[0] ?? null;
-  const primarySymbol = primaryQuote?.symbol ?? null;
-  const primaryAssetClass = primaryQuote?.asset_class ?? null;
-
+  // A reading belongs to the instrument and range it was made for; drop it when they change.
+  const evidenceKey = history ? `${history.symbol}|${history.bars.length}|${history.bars[0]?.start_at}` : "";
   useEffect(() => {
     setAnalysis(null);
     setAnalysisError(null);
+  }, [evidenceKey]);
 
-    if (overview?.data_mode === "mock") {
-      setHistory(null);
-      setHistoryError("Historical chart disabled while the mock provider is configured.");
-      return;
-    }
-    if (!primarySymbol || !primaryAssetClass) {
-      setHistory(null);
-      return;
-    }
-
-    const controller = new AbortController();
-    setHistoryLoading(true);
-    setHistoryError(null);
-
-    fetchMarketHistory(primarySymbol, primaryAssetClass, range, controller.signal)
-      .then((result) => {
-        if (!controller.signal.aborted) setHistory(result);
-      })
-      .catch((reason: unknown) => {
-        if (controller.signal.aborted) return;
-        setHistory(null);
-        setHistoryError(
-          reason instanceof Error ? reason.message : "Unable to load market history",
-        );
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setHistoryLoading(false);
-      });
-
-    return () => controller.abort();
-  }, [overview?.data_mode, primarySymbol, primaryAssetClass, range]);
+  const currency =
+    overview?.quotes.find((quote) => quote.symbol === history?.symbol)?.currency ??
+    overview?.quotes[0]?.currency;
 
   const hasAnalysisEvidence = useMemo(
     () => (history?.bars.length ?? 0) >= 2,
@@ -160,7 +129,7 @@ export function useMarketDashboard() {
     setAnalysisError(null);
     try {
       const result = await analyzeMarket(
-        buildAnalysisRequest(history, primaryQuote?.currency),
+        buildAnalysisRequest(history, currency),
         createRequestId(),
       );
       setAnalysis(result);
@@ -176,18 +145,13 @@ export function useMarketDashboard() {
     } finally {
       setAnalysisLoading(false);
     }
-  }, [slai, history, primaryQuote?.currency]);
+  }, [slai, history, currency]);
 
   return {
     overview,
     slai,
-    range,
-    setRange,
-    history,
     loading,
-    historyLoading,
     marketError,
-    historyError,
     slaiError,
     analysis,
     analysisLoading,

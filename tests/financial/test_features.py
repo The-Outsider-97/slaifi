@@ -50,9 +50,7 @@ def test_rolling_volatility_explicit_annualization() -> None:
 
 
 def test_drawdown_reference() -> None:
-    assert drawdown_series([100.0, 120.0, 90.0, 96.0]) == pytest.approx(
-        (0.0, 0.0, -0.25, -0.20)
-    )
+    assert drawdown_series([100.0, 120.0, 90.0, 96.0]) == pytest.approx((0.0, 0.0, -0.25, -0.20))
 
 
 def test_volume_zero_denominator_is_undefined() -> None:

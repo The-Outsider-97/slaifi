@@ -6,4 +6,9 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+  // Same place as the other SLAI applications: <app>/dist, served by `python -m applications.slaifi`.
+  build: {
+    outDir: "../dist",
+    emptyOutDir: true,
+  },
 });

@@ -12,8 +12,17 @@ permissions:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    # SLAIFI reuses SLAI's logger and SQLite Database tool, so the SLAI host is on the path.
+    env:
+      PYTHONPATH: ${{ github.workspace }}/_slai_host
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout SLAI host
+        uses: actions/checkout@v4
+        with:
+          repository: The-Outsider-97/SLAI
+          ref: main
+          path: _slai_host
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -21,9 +30,9 @@ jobs:
       - name: Install backend
         run: python -m pip install -e ".[dev]"
       - name: Compile
-        run: python -m compileall -q backend run_slaifi.py
+        run: python -m compileall -q backend
       - name: Ruff
-        run: ruff check backend tests run_slaifi.py
+        run: ruff check backend tests
       - name: Mypy
         run: mypy backend
       - name: Tests
@@ -35,9 +44,13 @@ jobs:
           from slaifi.core.config import Settings
           from slaifi.main import create_app
 
-          app = create_app(Settings(environment="test", slai_enabled=False))
+          import tempfile
+
+          app = create_app(Settings(environment="test", slai_enabled=False, data_dir=tempfile.mkdtemp()))
           with TestClient(app) as client:
               assert client.get('/health').json() == {'status': 'ok'}
+              status = client.get('/api/v1/system/status').json()
+              assert status['storage_status'] == 'ok' and status['real_money_trading'] == 'unavailable'
               assert client.get('/api/v1/market/overview').status_code == 200
               assert client.get('/api/v1/integrations/slai').json()['status'] == 'disabled'
           PY
@@ -83,15 +96,11 @@ jobs:
         run: python -m pip install -e ".[dev]"
       - name: SLAI adapter integration tests
         run: pytest tests/integration/test_slai_reasoner_adapter.py tests/api/test_reasoning_provenance.py
-      - name: Root launcher smoke inside SLAI host
-        run: |
-          cp run_slaifi.py _slai_host/run_slaifi.py
-          cd /tmp
-          PYTHONPATH="${GITHUB_WORKSPACE}:${GITHUB_WORKSPACE}/backend:${GITHUB_WORKSPACE}/_slai_host" \
-            python -c "import run_slaifi; assert callable(run_slaifi.main)"
+      - name: Launcher tests inside SLAI host
+        run: pytest tests/unit/test_launcher.py
       - name: Architecture and obsolete-reference guards
         run: |
           ! grep -R "slaifi.core.logging" backend tests
           ! grep -R "engines._validation" backend tests
-          ! grep -R "SLAI/applications/slaifi" README.md docs backend tests run_slaifi.py
-          ! grep -R "sys.path.append\|sys.path.insert\|os.getcwd()\|Path.cwd()" backend run_slaifi.py
+          ! grep -R "SLAI/application/slaifi" README.md docs backend tests
+          ! grep -R "sys.path.append\|sys.path.insert\|os.getcwd()\|Path.cwd()" backend

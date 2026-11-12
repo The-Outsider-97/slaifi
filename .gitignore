@@ -14,7 +14,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+/lib/
+/backend/lib/
 lib64/
 parts/
 sdist/
@@ -216,3 +217,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Frontend source folder named lib must be tracked (Python's lib/ rule above must not hide it)
+!frontend/src/lib/

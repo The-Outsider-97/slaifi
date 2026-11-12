@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
+
 from fastapi import APIRouter, Depends, Query
 
 from slaifi.api.dependencies import get_market_history_service, get_market_overview_service
@@ -13,7 +14,9 @@ router = APIRouter(prefix="/api/v1/market", tags=["market"])
 
 
 @router.get("/overview", response_model=MarketOverviewResponse)
-async def market_overview(service: Annotated[GetMarketOverview, Depends(get_market_overview_service)]) -> MarketOverviewResponse:
+async def market_overview(
+    service: Annotated[GetMarketOverview, Depends(get_market_overview_service)],
+) -> MarketOverviewResponse:
     overview = await service.execute()
     return MarketOverviewResponse.from_domain(overview)
 

@@ -10,7 +10,12 @@ type TopBarProps = {
 const PAGE_NAMES:
   Record<AppPage, string> = {
     market: "Market overview",
+    analysis: "Stock analysis",
     portfolio: "My portfolio",
+    paper: "Paper trading",
+    advisor: "SLAI Advisor",
+    strategy: "Strategies & goals",
+    settings: "Settings",
   };
 
 export function TopBar({

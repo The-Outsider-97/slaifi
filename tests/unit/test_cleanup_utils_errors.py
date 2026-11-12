@@ -46,9 +46,7 @@ def test_core_json_safe_and_datetime_helpers() -> None:
     aware = datetime(2026, 9, 25, tzinfo=UTC)
     assert is_aware_datetime(aware)
     assert not is_aware_datetime(datetime(2026, 9, 25))
-    payload = to_json_safe(
-        {"time": aware, "money": Decimal("1.25"), "status": ExampleStatus.OK}
-    )
+    payload = to_json_safe({"time": aware, "money": Decimal("1.25"), "status": ExampleStatus.OK})
     assert payload == {
         "time": str(aware),
         "money": "1.25",

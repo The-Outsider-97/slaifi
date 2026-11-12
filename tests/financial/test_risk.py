@@ -26,9 +26,7 @@ def test_historical_volatility_reference() -> None:
 
 
 def test_downside_deviation_reference() -> None:
-    expected = math.sqrt(
-        (0.0**2 + (-0.05) ** 2 + 0.0**2 + (-0.01) ** 2) / 4
-    ) * math.sqrt(12)
+    expected = math.sqrt((0.0**2 + (-0.05) ** 2 + 0.0**2 + (-0.01) ** 2) / 4) * math.sqrt(12)
     assert downside_deviation(RETURNS, periods_per_year=12) == pytest.approx(expected)
 
 

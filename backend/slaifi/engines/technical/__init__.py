@@ -9,5 +9,17 @@ from slaifi.engines.technical.indicators import (
     rsi,
     sma,
 )
+from slaifi.engines.technical.quality import BarQuality, assess_bars, normalize_bars
 
-__all__ = ["MACDResult", "atr", "ema", "macd", "momentum", "rsi", "sma"]
+__all__ = [
+    "BarQuality",
+    "MACDResult",
+    "assess_bars",
+    "atr",
+    "ema",
+    "macd",
+    "momentum",
+    "normalize_bars",
+    "rsi",
+    "sma",
+]

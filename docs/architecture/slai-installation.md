@@ -4,24 +4,23 @@ SLAIFI's canonical filesystem location is:
 
 ```text
 SLAI/
-├── run_slaifi.py
 ├── logs/
 ├── src/
-└── application/
+└── applications/
     └── slaifi/
 ```
 
 Clone SLAIFI into the singular `application` directory:
 
 ```powershell
-cd <SLAI_ROOT>\application
+cd <SLAI_ROOT>\applications
 git clone https://github.com/The-Outsider-97/slaifi.git
 cd slaifi
 python -m pip install -e ".[dev]"
 ```
 
-The Python package remains `slaifi` and is defined under `application/slaifi/backend/slaifi`. Standard installation makes it importable regardless of the current working directory; SLAIFI does not use `sys.path` mutation or `os.getcwd()` assumptions.
+The Python package remains `slaifi` and is defined under `applications/slaifi/backend/slaifi`. Standard installation makes it importable regardless of the current working directory; SLAIFI does not use `sys.path` mutation or `os.getcwd()` assumptions.
 
-The repository-delivered `run_slaifi.py` is written for its final location at `SLAI/run_slaifi.py`. Move that file to the SLAI root without changing its imports. It reads host/port and environment from SLAIFI's Settings layer and configures logging through `SLAI/logs/logger.py`.
+SLAIFI starts with `python -m applications.slaifi` from the SLAI root, like the other SLAI applications. It reads its settings from `configs/config.yaml`, `<SLAI root>\.env` and the environment, and configures logging through `SLAI/logs/logger.py`.
 
 Core, Domain, and Engines remain independent of SLAI runtime modules. Operational upper layers use the shared SLAI logger, and the concrete SLAI reasoning adapter remains isolated under `integrations/slai`.

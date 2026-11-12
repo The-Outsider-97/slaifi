@@ -11,16 +11,20 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import ValidationError as PydanticValidationError
 
 from slaifi.api.dependencies import (
-    get_market_data_provider,
+    get_market_gateway,
     get_portfolio_analysis_service,
     get_request_id,
     get_runtime_settings,
 )
-from slaifi.api.schemas.analysis import PortfolioAnalysisResponse, PortfolioInput
+from slaifi.api.schemas.analysis import (
+    PortfolioAnalysisResponse,
+    PortfolioInput,
+    PortfolioPriceBasis,
+)
 from slaifi.application.analysis import AnalyzePortfolio
 from slaifi.core.config import Settings
 from slaifi.domain.assets import AssetId
-from slaifi.domain.market.provider import MarketDataProvider
+from slaifi.domain.market import MarketGateway
 
 router = APIRouter(prefix="/api/v1/portfolio", tags=["portfolio"])
 
@@ -32,7 +36,7 @@ router = APIRouter(prefix="/api/v1/portfolio", tags=["portfolio"])
 )
 async def current_portfolio(
     settings: Annotated[Settings, Depends(get_runtime_settings)],
-    provider: Annotated[MarketDataProvider, Depends(get_market_data_provider)],
+    gateway: Annotated[MarketGateway, Depends(get_market_gateway)],
     service: Annotated[AnalyzePortfolio, Depends(get_portfolio_analysis_service)],
     request_id: Annotated[str | None, Depends(get_request_id)],
     include_reasoning: Annotated[
@@ -76,15 +80,24 @@ async def current_portfolio(
             assets.append(trade.asset)
 
     prices: dict[AssetId, Decimal] = {}
+    basis = PortfolioPriceBasis(mode="none")
     if assets:
-        quotes = await provider.get_quotes(tuple(assets))
+        fetched = await gateway.fetch_quotes(tuple(assets))
+        quotes = [f.quote for f in fetched if f.quote is not None]
         prices = {quote.asset: quote.price for quote in quotes}
         missing = [asset.display_symbol for asset in assets if asset not in prices]
         if missing:
             raise HTTPException(
                 status_code=503,
-                detail=f"Current market prices unavailable for: {', '.join(missing)}",
+                detail=f"NOT AVAILABLE: no live or saved price for {', '.join(missing)}",
             )
+        stale = [q for q in quotes if q.last_known]
+        basis = PortfolioPriceBasis(
+            mode="last_known" if stale else "live",
+            sources=sorted({q.source for q in quotes}),
+            last_known_symbols=[q.asset.display_symbol for q in stale],
+            oldest_observed_at=min(q.observed_at for q in quotes),
+        )
 
     result = service.execute(
         portfolio,
@@ -100,4 +113,6 @@ async def current_portfolio(
         ),
         request_id=request_id,
     )
-    return PortfolioAnalysisResponse.from_application(result)
+    response = PortfolioAnalysisResponse.from_application(result)
+    response.price_basis = basis
+    return response
