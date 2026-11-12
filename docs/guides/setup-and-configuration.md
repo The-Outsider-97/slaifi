@@ -25,13 +25,13 @@ npm.cmd run build
 ```
 This installs the UI's packages and builds `applications\slaifi\dist`, like `npm run build` in the other apps.
 
-**3. Market-data keys.** Add your free keys to `<SLAI_ROOT>\.env` (or set them in the environment):
+**3. Market-data keys.** Copy `.env.example` to `.env` in `<SLAI_ROOT>\applications\slaifi` and fill in your free keys (or put the same lines in `<SLAI_ROOT>\.env`, or set them in the environment):
 ```
 SLAIFI_TWELVEDATA_API_KEY=...
 SLAIFI_TIINGO_API_KEY=...
 SLAIFI_FMP_API_KEY=...
 ```
-Only `SLAIFI_*` lines are read from that file. Keys are never logged or shown.
+Both files are read (the SLAIFI one wins); only `SLAIFI_*` lines are used from the shared `<SLAI_ROOT>\.env`. The start-up banner lists the `.env` files it found. Keys are never logged or shown.
 
 **4. Start it:**
 ```
@@ -75,7 +75,7 @@ the result; later loads use the cache. With only the 25-call Alpha Vantage key, 
 quickly — that is why three or more sources are recommended.
 
 ## Configuration (environment variables, prefix `SLAIFI_`)
-Precedence: `configs/config.yaml` < `<SLAI root>\.env` < environment < command line. See `.env.example` for a complete annotated file.
+Precedence: `configs/config.yaml` < `<SLAI root>\.env` < `applications/slaifi/.env` < environment < command line. See `.env.example` for a complete annotated file.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |

@@ -148,13 +148,13 @@ export function SettingsPage() {
           <p className="muted">
             SLAIFI asks these sources in order and uses the first that answers. If none can be reached it shows the last real
             price it saved (labelled with when it was observed); if there is none it says NOT AVAILABLE. Nothing is ever invented.
-            Each source needs its own free key, set as an environment variable before starting SLAIFI. Keys are never shown here.
+            Each source needs its own free key, kept in SLAIFI's .env file (applications\slaifi\.env, copied from .env.example) or in the environment before SLAIFI starts. Keys are never shown here.
           </p>
           {providers.loading && !providers.data ? <Loading /> : null}
           {providers.error ? <Notice tone="error" onRetry={providers.reload}>{providers.error}</Notice> : null}
           {providers.data && !providers.data.configured ? (
             <Notice tone="warning" title="No market-data key is set">
-              Set at least one of the variables below (three or more are recommended for failover), restart SLAIFI, then use Check providers.
+              Put at least one of the variables below in .env (three or more are recommended for failover), restart SLAIFI, then use Check providers. The start-up banner lists the .env files that were read.
             </Notice>
           ) : null}
           {providers.data ? (

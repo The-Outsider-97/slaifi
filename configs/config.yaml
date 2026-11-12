@@ -1,7 +1,7 @@
 # SLAIFI settings, read through SLAI's ConfigRepository. Every value is optional; the values below are the defaults.
-# A SLAIFI_* environment variable (or a line in <SLAI root>\.env) overrides the matching value here.
+# A SLAIFI_* environment variable (or a line in applications\slaifi\.env or <SLAI root>\.env) overrides the matching value here.
 # API keys never belong in this file: put SLAIFI_TWELVEDATA_API_KEY, SLAIFI_TIINGO_API_KEY, SLAIFI_FMP_API_KEY,
-# SLAIFI_FINNHUB_API_KEY and SLAIFI_ALPHAVANTAGE_API_KEY in <SLAI root>\.env or in the environment.
+# SLAIFI_FINNHUB_API_KEY and SLAIFI_ALPHAVANTAGE_API_KEY in applications\slaifi\.env (copy of .env.example) or the environment.
 app:
   port: 8777                    # where SLAIFI listens (127.0.0.1 only)
   log_level: INFO               # DEBUG, INFO, WARNING, ERROR or CRITICAL

@@ -36,7 +36,7 @@ several parser phrasings; watchlist removal by symbol.
 * **Docs**: setup order (install dependencies first, run `npm` from `frontend`), key sign-up, variables.
 * **Starts like the other SLAI apps**: `npm.cmd run build` in `applications\slaifi`, then
   `python -m applications.slaifi` from the SLAI root (shared `applications/tools` launcher and banner, port 8777,
-  token link, data in `%LOCALAPPDATA%\SLAI\SLAIFI`, `configs/config.yaml`, keys in `<SLAI root>\.env`). The API serves the built UI
+  token link, data in `%LOCALAPPDATA%\SLAI\SLAIFI`, `configs/config.yaml`, keys in `applications\slaifi\.env` (copy of `.env.example`) or `<SLAI root>\.env`). The API serves the built UI
   from `dist/` and applies the same local-access rules as the shared server (token cookie, Host/Origin checks, CSP and
   security headers). `run_slaifi.py` is removed. `frontend/src/lib/` (formatting helpers) had been excluded by a Python
   `.gitignore` rule and is now tracked.

@@ -13,7 +13,7 @@ npm.cmd run build            # installs the UI's packages and builds dist/
 cd G:\GAIA\AI\SLAI
 python -m applications.slaifi
 ```
-It prints a banner and a link such as `http://127.0.0.1:8777/?token=...` (port 8777; the link carries a one-time access token and opens in your browser). Free market-data keys go in `G:\GAIA\AI\SLAI\.env` (or the environment) as `SLAIFI_TWELVEDATA_API_KEY=...`, `SLAIFI_TIINGO_API_KEY=...`, `SLAIFI_FMP_API_KEY=...` (and optionally `SLAIFI_FINNHUB_API_KEY`, `SLAIFI_ALPHAVANTAGE_API_KEY`). Data lives in `%LOCALAPPDATA%\SLAI\SLAIFI`; settings in `applications\slaifi\configs\config.yaml`. Then open Settings → Market data sources → **Check providers**.
+It prints a banner and a link such as `http://127.0.0.1:8777/?token=...` (port 8777; the link carries a one-time access token and opens in your browser). Free market-data keys go in `applications\slaifi\.env` (copy `.env.example` to `.env`; or in `G:\GAIA\AI\SLAI\.env`, or the environment) as `SLAIFI_TWELVEDATA_API_KEY=...`, `SLAIFI_TIINGO_API_KEY=...`, `SLAIFI_FMP_API_KEY=...` (and optionally `SLAIFI_FINNHUB_API_KEY`, `SLAIFI_ALPHAVANTAGE_API_KEY`). Data lives in `%LOCALAPPDATA%\SLAI\SLAIFI`; settings in `applications\slaifi\configs\config.yaml`. Then open Settings → Market data sources → **Check providers**.
 
 Runtime location
 SLAIFI is designed to live at:

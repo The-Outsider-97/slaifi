@@ -56,7 +56,7 @@ SLAIFI starts like every other SLAI application: `python -m applications.slaifi`
 (`applications/slaifi/__main__.py` → `backend/slaifi/launcher.py`). It:
 
 1. parses the shared options (`add_server_arguments`: `--port`, `--data-dir`, `--config`, `--client-dir`, `--token`, `--no-browser`, `--slai-root`) and refuses non-loopback hosts;
-2. loads `configs/config.yaml` through the shared `load_section`, then `<SLAI root>/.env` and the environment (they win), then the command line;
+2. loads `configs/config.yaml` through the shared `load_section`, then `<SLAI root>/.env`, `applications/slaifi/.env` and the environment (each wins over the previous), then the command line;
 3. configures SLAI logging once (`logs/logger.py`) and shuts it down on exit;
 4. binds the listening socket itself (a taken port is an error, never shared) and builds the FastAPI app with the shared Content-Security-Policy and security headers;
 5. serves it with uvicorn (`log_config=None`, `access_log=False` so the token in the start-up link is never logged) through the shared `serve()` banner, browser opening and clean shutdown;

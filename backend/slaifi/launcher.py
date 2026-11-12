@@ -16,6 +16,7 @@ import os
 import secrets
 import socket
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -78,22 +79,35 @@ def bind(host: str, port: int) -> socket.socket:
     return sock
 
 
+def env_files_for(root: Path | None) -> list[Path]:
+    """The ``.env`` files SLAIFI reads, lowest priority first: ``<SLAI root>/.env`` (shared with other
+    SLAI components; only ``SLAIFI_*`` lines are used) then ``applications/slaifi/.env`` (the copy of
+    ``.env.example``). Only files that exist are returned."""
+
+    candidates = [(root / ".env") if root else None, HERE / ".env"]
+    return [p for p in candidates if p is not None and p.is_file()]
+
+
 def load_settings(
     *,
     config: str | None,
     data_dir: str | None,
     client_dir: str | None,
     port: int | None,
-    env_file: Path | None,
+    env_files: Sequence[Path] = (),
 ) -> tuple[Settings, Path | None, str | None]:
-    """Settings from ``configs/config.yaml`` < ``.env`` / environment < command line."""
+    """Settings from ``configs/config.yaml`` < ``.env`` files < environment < command line.
+
+    ``env_files`` are read in order, later files winning (see :func:`env_files_for`).
+    """
 
     config_path = Path(config) if config else HERE / "configs" / "config.yaml"
     values, note = load_section(
         config_path, "app", SETTINGS_FIELDS, label="SLAIFI configuration", overrides={"port": port}
     )
     explicit: set[str] = {k.upper() for k in os.environ}
-    if env_file is not None and env_file.is_file():
+    present = [f for f in env_files if f.is_file()]
+    for env_file in present:
         explicit |= {k.upper() for k in dotenv_values(env_file)}
     init: dict[str, Any] = {}
     for name, value in values.items():
@@ -104,7 +118,7 @@ def load_settings(
     if data_dir:
         init["data_dir"] = Path(data_dir)
     init["frontend_dist_dir"] = Path(client_dir) if client_dir else HERE / "dist"
-    kwargs: dict[str, Any] = {"_env_file": env_file} if env_file and env_file.is_file() else {}
+    kwargs: dict[str, Any] = {"_env_file": tuple(present)} if present else {}
     return Settings(**kwargs, **init), config_path, note
 
 
@@ -132,7 +146,7 @@ def _run(args: argparse.Namespace, root: Path | None) -> int:
             data_dir=args.data_dir,
             client_dir=args.client_dir,
             port=args.port,
-            env_file=(root / ".env") if root else None,
+            env_files=env_files_for(root),
         )
         client_dir = Path(str(settings.frontend_dist_dir))
         if not (client_dir / "index.html").is_file():
@@ -176,7 +190,7 @@ def _run(args: argparse.Namespace, root: Path | None) -> int:
         notes.append(
             "No market-data key is set, so prices show NOT AVAILABLE. Add SLAIFI_TWELVEDATA_API_KEY, "
             "SLAIFI_TIINGO_API_KEY and SLAIFI_FMP_API_KEY (free keys) to "
-            f"{(root / '.env') if root else 'the .env file in the SLAI root'} and restart."
+            f"{HERE / '.env'} (copy .env.example) or to the SLAI root .env, then restart."
         )
     elif len(configured) < 3:
         notes.append(
@@ -189,6 +203,7 @@ def _run(args: argparse.Namespace, root: Path | None) -> int:
         ),
         ("SLAI", str(root) if root else "not found"),
         ("Config", str(config_path)),
+        ("Env files", ", ".join(str(p) for p in env_files_for(root)) or "none found"),
         ("Market data", ", ".join(configured) if configured else "no source configured"),
     ]
     return int(

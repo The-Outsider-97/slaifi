@@ -51,7 +51,7 @@ def test_configuration_precedence_file_then_env_then_command_line(
         data_dir=str(tmp_path / "d"),
         client_dir=None,
         port=None,
-        env_file=env_file,
+        env_files=[env_file],
     )
     assert settings.api_port == 8801  # config.yaml
     assert settings.log_level == "WARNING"
@@ -60,10 +60,67 @@ def test_configuration_precedence_file_then_env_then_command_line(
 
     monkeypatch.setenv("SLAIFI_MARKET_QUOTE_CACHE_TTL_SECONDS", "33")
     settings, _p, _n = launcher.load_settings(
-        config=str(config), data_dir=None, client_dir=None, port=8802, env_file=env_file
+        config=str(config), data_dir=None, client_dir=None, port=8802, env_files=[env_file]
     )
     assert settings.market_quote_cache_ttl_seconds == 33  # real environment beats .env
     assert settings.api_port == 8802  # command line beats config.yaml
+
+
+def test_keys_are_read_from_the_app_env_file_and_the_slai_root_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``applications/slaifi/.env`` (copy of .env.example) and ``<SLAI root>/.env`` both work; the
+    app file wins; unrelated lines in the shared file are ignored."""
+
+    for key in ("SLAIFI_TWELVEDATA_API_KEY", "SLAIFI_TIINGO_API_KEY", "SLAIFI_FMP_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
+    root_env = tmp_path / "root.env"
+    root_env.write_text(
+        "OPENAI_API_KEY=not-ours\nSLAIFI_TWELVEDATA_API_KEY=from-root\nSLAIFI_TIINGO_API_KEY=from-root\n",
+        encoding="utf-8",
+    )
+    app_env = tmp_path / "app.env"
+    app_env.write_text(
+        "SLAIFI_TWELVEDATA_API_KEY=from-app\nSLAIFI_FMP_API_KEY=from-app\n", encoding="utf-8"
+    )
+    missing = tmp_path / "missing.env"
+
+    settings, _p, _n = launcher.load_settings(
+        config=None,
+        data_dir=None,
+        client_dir=None,
+        port=None,
+        env_files=[root_env, app_env, missing],
+    )
+    assert settings.twelvedata_api_key is not None
+    assert (
+        settings.twelvedata_api_key.get_secret_value() == "from-app"
+    )  # app file beats the root file
+    assert settings.tiingo_api_key is not None
+    assert (
+        settings.tiingo_api_key.get_secret_value() == "from-root"
+    )  # root file still supplies the rest
+    assert (
+        settings.fmp_api_key is not None and settings.fmp_api_key.get_secret_value() == "from-app"
+    )
+
+
+def test_env_files_for_lists_only_existing_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    (app_dir / ".env").write_text("SLAIFI_FMP_API_KEY=x\n", encoding="utf-8")
+    monkeypatch.setattr(launcher, "HERE", app_dir)
+    root = tmp_path / "root"
+    root.mkdir()
+    assert launcher.env_files_for(root) == [app_dir / ".env"]  # no root .env yet
+    (root / ".env").write_text("A=1\n", encoding="utf-8")
+    assert launcher.env_files_for(root) == [
+        root / ".env",
+        app_dir / ".env",
+    ]  # lowest priority first
+    assert launcher.env_files_for(None) == [app_dir / ".env"]
 
 
 def test_an_invalid_setting_names_the_setting(tmp_path: Path) -> None:
@@ -71,7 +128,7 @@ def test_an_invalid_setting_names_the_setting(tmp_path: Path) -> None:
     config.write_text("app:\n  port: 99999999\n", encoding="utf-8")
     with pytest.raises(ValueError, match="port"):
         launcher.load_settings(
-            config=str(config), data_dir=None, client_dir=None, port=None, env_file=None
+            config=str(config), data_dir=None, client_dir=None, port=None, env_files=[]
         )
 
 
