@@ -7,6 +7,7 @@ import { Empty, Loading, Notice, Simulated } from "../components/finance/Notice"
 import { OrderTicket } from "../components/finance/OrderTicket";
 import { PageHeading } from "../components/finance/PageHeading";
 import { useAction, useAsync } from "../hooks/useAsync";
+import { parseNumber } from "../lib/numbers";
 import { dateTime, direction, humanize, money, number, percent, quantity, signedPercent } from "../lib/format";
 import {
   createPortfolio,
@@ -47,10 +48,17 @@ function CreatePortfolio({ onCreated, first }: { onCreated: (id: string) => void
   const [name, setName] = useState("Practice portfolio");
   const [capital, setCapital] = useState("10000");
   const create = useAction(createPortfolio);
+  const [problem, setProblem] = useState("");
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const view = await create.run({ name: name.trim(), starting_capital: capital.trim() });
+    const cash = parseNumber(capital, { label: "Starting cash", min: 0, minExclusive: true, maxDecimals: 2 });
+    if (!cash.ok) {
+      setProblem(cash.message);
+      return;
+    }
+    setProblem("");
+    const view = await create.run({ name: name.trim(), starting_capital: cash.text });
     if (view) onCreated(view.portfolio.portfolio_id);
   };
 
@@ -75,10 +83,11 @@ function CreatePortfolio({ onCreated, first }: { onCreated: (id: string) => void
           <span>Starting cash (USD)</span>
           <input inputMode="decimal" value={capital} onChange={(e) => setCapital(e.target.value)} required />
         </label>
-        <button className="primary-cta primary-cta--inline" type="submit" disabled={create.running || !name.trim() || !(Number(capital) > 0)}>
+        <button className="primary-cta primary-cta--inline" type="submit" disabled={create.running || !name.trim() || capital.trim() === ""}>
           {create.running ? "Creating…" : "Create portfolio"}
         </button>
       </form>
+      {problem ? <Notice tone="error">{problem}</Notice> : null}
       {create.error ? <Notice tone="error">{create.error}</Notice> : null}
     </section>
   );
@@ -178,13 +187,20 @@ function Positions({ view, onClose, closing }: { view: PortfolioView; onClose: (
 
 function Cash({ view, onDone }: { view: PortfolioView; onDone: () => void }) {
   const [amount, setAmount] = useState("");
+  const [problem, setProblem] = useState("");
   const deposit = useAction(depositCash);
   const withdraw = useAction(withdrawCash);
   const id = view.portfolio.portfolio_id;
 
   const go = (kind: "deposit" | "withdraw") => async (event: FormEvent) => {
     event.preventDefault();
-    const done = kind === "deposit" ? await deposit.run(id, amount.trim()) : await withdraw.run(id, amount.trim());
+    const parsed = parseNumber(amount, { label: "Amount", min: 0, minExclusive: true, maxDecimals: 2 });
+    if (!parsed.ok) {
+      setProblem(parsed.message);
+      return;
+    }
+    setProblem("");
+    const done = kind === "deposit" ? await deposit.run(id, parsed.text) : await withdraw.run(id, parsed.text);
     if (done) {
       setAmount("");
       onDone();
@@ -205,9 +221,10 @@ function Cash({ view, onDone }: { view: PortfolioView; onDone: () => void }) {
           <span>Amount ({view.currency})</span>
           <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="amount in dollars" />
         </label>
-        <button className="secondary-button" type="submit" disabled={busy || !(Number(amount) > 0)}>Deposit</button>
-        <button className="secondary-button" type="button" disabled={busy || !(Number(amount) > 0)} onClick={go("withdraw")}>Withdraw</button>
+        <button className="secondary-button" type="submit" disabled={busy || amount.trim() === ""}>Deposit</button>
+        <button className="secondary-button" type="button" disabled={busy || amount.trim() === ""} onClick={go("withdraw")}>Withdraw</button>
       </form>
+      {problem ? <Notice tone="error">{problem}</Notice> : null}
       {deposit.error ? <Notice tone="error">{deposit.error}</Notice> : null}
       {withdraw.error ? <Notice tone="error">{withdraw.error}</Notice> : null}
     </section>

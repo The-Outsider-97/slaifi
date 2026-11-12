@@ -71,6 +71,10 @@ def bind(host: str, port: int) -> socket.socket:
     """Listen on ``host:port`` or raise ``OSError`` when it is taken (no silent port sharing)."""
     family = socket.AF_INET6 if ":" in host else socket.AF_INET
     sock = socket.socket(family, socket.SOCK_STREAM)
+    if os.name == "posix":
+        # Lets a restart reuse the port while the old connections are still winding down. On
+        # POSIX it never allows two listeners; on Windows the option would, so it is not set.
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
         sock.bind((host, port))
     except OSError:

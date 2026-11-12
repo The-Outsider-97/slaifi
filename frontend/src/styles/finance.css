@@ -224,3 +224,6 @@ input[type="checkbox"], input[type="radio"] { width: 16px; min-height: 16px; acc
 .last-known-note { display: block; color: var(--accent); font: 600 9px var(--font-sans); letter-spacing: .06em; }
 .summary-card--last-known { border-color: rgba(225,200,56,.35); }
 .summary-card--unavailable .not-available { font-size: 15px; }
+
+.field-error { color: var(--negative); font-size: 12px; line-height: 1.4; }
+.field input[aria-invalid="true"], .field select[aria-invalid="true"] { border-color: var(--negative); }

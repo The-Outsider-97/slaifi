@@ -1,10 +1,12 @@
 """Stable HTTP mappings for expected SLAIFI failures."""
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from logs.logger import get_logger
 
 from slaifi.api.security import ClientHeaderRequired
+from slaifi.api.validation import explain_errors
 from slaifi.application.contracts import ReasoningUnavailableError
 from slaifi.core.utils.errors import (
     CalculationError,
@@ -22,6 +24,11 @@ logger = get_logger("SLAIFI API")
 
 
 def install_exception_handlers(app: FastAPI) -> None:
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(_: Request, exc: RequestValidationError) -> JSONResponse:
+        # Plain sentences that name the field, plus a per-field list the UI can attach to inputs.
+        return JSONResponse(status_code=422, content=explain_errors(exc.errors()))
+
     @app.exception_handler(ReasoningUnavailableError)
     async def reasoning_unavailable(
         _: Request,

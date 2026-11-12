@@ -8,6 +8,7 @@ from slaifi.api.routes.finance_market import router as finance_market_router
 from slaifi.api.routes.goals import router as goals_router
 from slaifi.api.routes.health import router as health_router
 from slaifi.api.routes.integrations import router as integrations_router
+from slaifi.api.routes.learning import router as learning_router
 from slaifi.api.routes.market import router as market_router
 from slaifi.api.routes.paper import router as paper_router
 from slaifi.api.routes.portfolio import router as portfolio_router
@@ -27,5 +28,6 @@ api_router.include_router(integrations_router)
 api_router.include_router(recommendations_router)
 api_router.include_router(paper_router)
 api_router.include_router(strategies_router)
+api_router.include_router(learning_router)
 api_router.include_router(advisor_router)
 api_router.include_router(system_router)

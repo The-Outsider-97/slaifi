@@ -58,10 +58,16 @@ async function responseError(response: Response, path: string): Promise<Error> {
     if (typeof body.detail === "string") {
       detail = body.detail;
     } else if (Array.isArray(body.detail)) {
+      // Older servers send pydantic's raw list; keep the field name so the message is still usable.
       detail = body.detail
-        .map((item) => (item && typeof item === "object" && "msg" in item ? String((item as { msg: unknown }).msg) : ""))
+        .map((item) => {
+          if (!item || typeof item !== "object" || !("msg" in item)) return "";
+          const { msg, loc } = item as { msg: unknown; loc?: unknown };
+          const field = Array.isArray(loc) ? String(loc[loc.length - 1] ?? "").replace(/_/g, " ") : "";
+          return field && field !== "body" ? `${field}: ${String(msg)}` : String(msg);
+        })
         .filter(Boolean)
-        .join("; ");
+        .join(" ");
     } else {
       detail = body.error ?? "";
     }

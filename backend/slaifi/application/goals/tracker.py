@@ -21,7 +21,12 @@ from slaifi.domain.goals import (
     IncomePeriod,
 )
 from slaifi.domain.portfolio import CashFlowKind, Portfolio
-from slaifi.engines.goals.planning import analyze_goal, annualize_measured_return, measure_progress
+from slaifi.engines.goals.planning import (
+    analyze_goal,
+    annualize_measured_return,
+    measure_balance_progress,
+    measure_progress,
+)
 from slaifi.engines.portfolio import EquityPoint, build_positions, summarize_performance
 
 _ZERO = Decimal("0")
@@ -112,6 +117,9 @@ class GoalTracker:
                     else None
                 ),
                 portfolio_id=fields.get("portfolio_id"),
+                target_value=Decimal(str(fields["target_value"]))
+                if fields.get("target_value") not in (None, "")
+                else None,
             )
         except KeyError as exc:
             raise ValidationError(f"missing goal field {exc.args[0]!r}") from exc
@@ -134,6 +142,7 @@ class GoalTracker:
                     "target_amount": str(spec.target_amount) if spec.target_amount else None,
                     "period": spec.period.value if spec.period else None,
                     "target_annual_rate": spec.target_annual_rate,
+                    "target_value": str(spec.target_value) if spec.target_value else None,
                 },
             )
         return spec
@@ -177,6 +186,8 @@ class GoalTracker:
     def _measured_progress(
         self, spec: GoalSpec, portfolio_id: str | None, now: datetime
     ) -> GoalProgress | None:
+        if spec.basis is GoalBasis.TARGET_BALANCE:
+            return self._balance_progress(spec, portfolio_id, now)
         if spec.period is None or spec.target_amount is None or portfolio_id is None:
             return None
         start, end, label = period_window(spec.period, now)
@@ -199,6 +210,28 @@ class GoalTracker:
             amount = last.total_value - first.total_value - flows
         return measure_progress(
             spec, measured_amount=amount, window_label=label, elapsed_fraction=elapsed
+        )
+
+    def _balance_progress(
+        self, spec: GoalSpec, portfolio_id: str | None, now: datetime
+    ) -> GoalProgress | None:
+        if portfolio_id is None or spec.horizon_years is None:
+            return None
+        points = list(self._store.list_valuations(portfolio_id))
+        if not points:
+            return None
+        start_value = spec.starting_capital if spec.starting_capital is not None else None
+        if start_value is None:
+            since = [p for p in points if p.at >= spec.created_at]
+            start_value = (since[0] if since else points[0]).total_value
+        total_seconds = spec.horizon_years * 365.25 * 86400.0
+        elapsed = (now - spec.created_at).total_seconds() / total_seconds
+        return measure_balance_progress(
+            spec,
+            current_value=points[-1].total_value,
+            start_value=start_value,
+            elapsed_fraction=elapsed,
+            window_label=f"since {spec.created_at:%Y-%m-%d}",
         )
 
     async def analyze(
@@ -243,6 +276,21 @@ class GoalTracker:
             measured_rate = summary.annualized_return
             drawdown = summary.max_drawdown
             progress = self._measured_progress(spec, portfolio_id, now)
+        horizon_override: float | None = None
+        replanned = False
+        if (
+            spec.basis is GoalBasis.TARGET_BALANCE
+            and portfolio_id is not None
+            and spec.horizon_years is not None
+            and capital_override is None
+        ):
+            # Re-plan from today: current value, time left. Never invent a catch-up the user did
+            # not ask for; this only changes the arithmetic's starting point and says so.
+            elapsed_years = (now - spec.created_at).total_seconds() / (365.25 * 86400.0)
+            if elapsed_years > 0.0:
+                capital = view.snapshot.total_value
+                horizon_override = max(spec.horizon_years - elapsed_years, 1.0 / 12.0)
+                replanned = True
         if capital is None:
             capital = strategy.capital if strategy.capital is not None else _ZERO
         return analyze_goal(
@@ -254,6 +302,8 @@ class GoalTracker:
             strategy_max_drawdown_rate=strategy.max_drawdown_rate,
             strategy_risk_tolerance=strategy.risk_tolerance.value,
             progress=progress,
+            horizon_override=horizon_override,
+            replanned=replanned,
         )
 
 

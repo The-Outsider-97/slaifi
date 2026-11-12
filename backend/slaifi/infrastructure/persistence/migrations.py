@@ -107,4 +107,19 @@ _V1 = (
     "CREATE INDEX idx_audit_subject ON audit_log(subject, seq)",
 )
 
-MIGRATIONS: tuple[Migration, ...] = (Migration(1, "initial SLAIFI ledger schema", _V1),)
+_V2 = (
+    # One row per (symbol, strategy, day): refreshing a page must not inflate the sample.
+    """CREATE TABLE recommendation_log (
+        record_id TEXT PRIMARY KEY,
+        dedupe_key TEXT NOT NULL UNIQUE,
+        issued_at TEXT NOT NULL,
+        body TEXT NOT NULL,
+        outcome TEXT
+    )""",
+    "CREATE INDEX idx_recommendation_log_pending ON recommendation_log(issued_at) WHERE outcome IS NULL",
+)
+
+MIGRATIONS: tuple[Migration, ...] = (
+    Migration(1, "initial SLAIFI ledger schema", _V1),
+    Migration(2, "recommendation log for track record", _V2),
+)

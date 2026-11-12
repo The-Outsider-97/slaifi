@@ -583,3 +583,65 @@ def test_no_real_money_route_exists(client: TestClient) -> None:
     paths = client.get("/openapi.json").json()["paths"]
     assert not [p for p in paths if "broker" in p or "live-trade" in p or "real" in p]
     assert client.get("/api/v1/system/status").json()["real_money_trading"] == "unavailable"
+
+
+def test_balance_goal_end_to_end_with_replanning(client: TestClient) -> None:
+    made = client.post(
+        "/api/v1/goal-tracker",
+        headers=H,
+        json={
+            "name": "Down payment",
+            "basis": "target_balance",
+            "target_value": "15000",
+            "horizon_years": 4,
+            "starting_capital": "10000",
+        },
+    )
+    assert made.status_code == 201, made.text
+    goal = made.json()
+    assert goal["target_value"] == "15000.00" or goal["target_value"] == "15000"
+    gid = goal["goal_id"]
+
+    report = client.post(
+        f"/api/v1/goal-tracker/{gid}/analyze", json={"assumed_annual_return_rate": 0.04}
+    ).json()
+    plan = report["plan"]
+    assert plan["kind"] == "target_balance"
+    assert plan["required_annual_return_rate"] == pytest.approx(1.5 ** (1 / 4) - 1, abs=1e-4)
+    assert float(plan["required_monthly_contribution"]) > 0
+    assert plan["replanned_from_today"] is False  # no portfolio attached: original plan
+
+    portfolio = make_portfolio(client, "10000")
+    attached = client.post(
+        f"/api/v1/goal-tracker/{gid}/analyze",
+        json={"assumed_annual_return_rate": 0.04, "portfolio_id": portfolio},
+    ).json()
+    assert attached["plan"]["capital"] is not None
+    assert attached["progress"] is None or attached["progress"]["basis"] == "target_balance"
+
+
+def test_withdrawal_goal_needs_its_inputs_and_reports_duration(client: TestClient) -> None:
+    bad = client.post(
+        "/api/v1/goal-tracker",
+        headers=H,
+        json={"name": "w", "basis": "sustainable_withdrawal", "horizon_years": 5},
+    )
+    assert bad.status_code == 422 and "withdrawal goal needs" in bad.json()["detail"]
+    ok = client.post(
+        "/api/v1/goal-tracker",
+        headers=H,
+        json={
+            "name": "Retire",
+            "basis": "sustainable_withdrawal",
+            "monthly_withdrawal": "1000",
+            "horizon_years": 5,
+            "starting_capital": "60000",
+        },
+    )
+    assert ok.status_code == 201, ok.text
+    report = client.post(
+        f"/api/v1/goal-tracker/{ok.json()['goal_id']}/analyze",
+        json={"assumed_annual_return_rate": 0.0},
+    ).json()
+    assert report["plan"]["months_capital_lasts"] == 60
+    assert report["plan"]["lasts_beyond_100_years"] is False

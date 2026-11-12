@@ -20,6 +20,7 @@ from applications.tools.database import Database
 
 from slaifi.core.types import CurrencyCode
 from slaifi.domain.goals import GoalSpec
+from slaifi.domain.learning import RecommendationOutcome, RecommendationRecord
 from slaifi.domain.ledger import (
     AuditEntry,
     Proposal,
@@ -384,6 +385,52 @@ class SqliteFinanceStore:
     def get_goal(self, goal_id: str) -> GoalSpec | None:
         row = self._db.row("SELECT body FROM goals WHERE goal_id = ?", (goal_id,))
         return codec.goal_from_dict(json.loads(row["body"])) if row else None
+
+    # ------------------------------------------------------------------ recommendation log
+    def log_recommendation(self, record: RecommendationRecord) -> bool:
+        key = f"{record.symbol}|{record.strategy_id}|{record.issued_at.date().isoformat()}"
+        if self._db.row("SELECT 1 AS x FROM recommendation_log WHERE dedupe_key = ?", (key,)):
+            return False
+        self._db.execute(
+            "INSERT INTO recommendation_log (record_id, dedupe_key, issued_at, body) VALUES (?, ?, ?, ?)",
+            (
+                record.record_id,
+                key,
+                codec.dt_to_text(record.issued_at),
+                _canonical(codec.recommendation_to_dict(record)),
+            ),
+        )
+        return True
+
+    def list_pending_recommendations(
+        self, issued_before: datetime, limit: int = 200
+    ) -> Sequence[RecommendationRecord]:
+        rows = self._db.rows(
+            "SELECT body FROM recommendation_log WHERE outcome IS NULL AND issued_at <= ? ORDER BY issued_at LIMIT ?",
+            (codec.dt_to_text(issued_before), limit),
+        )
+        return tuple(codec.recommendation_from_dict(json.loads(r["body"])) for r in rows)
+
+    def save_recommendation_outcome(self, outcome: RecommendationOutcome) -> None:
+        self._db.execute(
+            "UPDATE recommendation_log SET outcome = ? WHERE record_id = ?",
+            (_canonical(codec.outcome_to_dict(outcome)), outcome.record_id),
+        )
+
+    def list_recommendation_history(
+        self, limit: int = 2000
+    ) -> Sequence[tuple[RecommendationRecord, RecommendationOutcome | None]]:
+        rows = self._db.rows(
+            "SELECT body, outcome FROM recommendation_log ORDER BY issued_at DESC LIMIT ?",
+            (limit,),
+        )
+        return tuple(
+            (
+                codec.recommendation_from_dict(json.loads(r["body"])),
+                codec.outcome_from_dict(json.loads(r["outcome"])) if r["outcome"] else None,
+            )
+            for r in rows
+        )
 
     def delete_goal(self, goal_id: str) -> None:
         self._db.execute("DELETE FROM goals WHERE goal_id = ?", (goal_id,))

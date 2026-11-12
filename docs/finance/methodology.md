@@ -44,7 +44,10 @@ and compares to stored valuations. Reset requires explicit confirmation and star
 A strategy is a set of numeric parameters (horizon, risk tolerance, max drawdown, max position
 weight, concentration HHI cap, cash reserve, volatility cap, prohibited/preferred asset classes,
 costs, income weight, …). Presets are starting values only. **Hard limits always take precedence
-over preferences and optimisation.**
+over preferences and optimisation.** Ten presets are offered (short-term hawkish / care-bear / balanced,
+long-term hawkish / care-bear / growth, balanced core, dividend income, capital preservation, steady
+accumulation); each has a one-sentence description and every value stays editable, including how often you
+trade, income focus, preferred asset classes and dividend reinvestment.
 
 ## Goals (`engines/goals/planning.py`)
 For an amount target per period (e.g. $200/month, $50/day) the required annual return is the
@@ -54,6 +57,15 @@ rate applies. Findings flag demanding targets (> 15 %/yr),
 very demanding (> 30 %), risk/drawdown conflicts, and progress measured from the ledger in the
 current UTC calendar window. Scenarios use hypothetical rates (0, 4, 8, 12 %) and a −20 % stress.
 Targets are objectives, not guarantees.
+
+Two further goal types: **reach a balance by a date** (`target_value`, years, optional monthly saving) solves
+the compound annual return that reaches the balance (monthly compounding, end-of-month saving; bisection,
+exact to 1e-6), and with an assumed return shows the projected balance, the gap and the extra monthly saving
+required. **Fund withdrawals** (`monthly_withdrawal`, years) shows the return needed for the money to last,
+how long it lasts at the assumed return (up to 100 years) and the level withdrawal that ends at zero. If the
+required return is zero or negative the capital already covers it and the UI says "none needed". When no
+return can reach the target the report says so rather than inventing a number. See
+`learning-and-adaptation.md` for re-planning and progress.
 
 ## Advisor (`engines/instructions`, `application/advisor`)
 Rule-based parser → validation → preview → persisted *proposal* (30 min TTL) → confirmation.

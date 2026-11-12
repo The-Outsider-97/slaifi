@@ -1,5 +1,6 @@
 import { apiRequest } from "./api";
 import type {
+  AdaptationResponse,
   AdvisorResponse,
   AuditEntry,
   BacktestResponse,
@@ -7,6 +8,7 @@ import type {
   ConfirmResponse,
   Goal,
   GoalReport,
+  GoalReview,
   GuidanceResponse,
   HistoryEntry,
   MarketMeta,
@@ -25,6 +27,8 @@ import type {
   StrategiesResponse,
   Strategy,
   SystemStatus,
+  TrackRecord,
+  TrackRecordRefresh,
   WatchlistResponse,
 } from "../types/finance";
 
@@ -190,6 +194,19 @@ export const createGoal = (body: Record<string, unknown>) => mutate<Goal>("POST"
 export const deleteGoal = (id: string) => mutate<{ deleted: string }>("DELETE", `${V1}/goal-tracker/${encodeURIComponent(id)}`);
 export const analyzeGoal = (id: string, body: { assumed_annual_return_rate?: number | null; portfolio_id?: string | null }) =>
   apiRequest<GoalReport>(`${V1}/goal-tracker/${encodeURIComponent(id)}/analyze`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+// ------------------------------------------------------------------ learning and review
+export const fetchTrackRecord = (signal?: AbortSignal) => apiRequest<TrackRecord>(`${V1}/learning/track-record`, { signal });
+export const refreshTrackRecord = () => mutate<TrackRecordRefresh>("POST", `${V1}/learning/track-record/refresh`);
+export const fetchAdaptations = (strategyId: string, portfolioId: string | null, explain: boolean) =>
+  apiRequest<AdaptationResponse>(
+    `${V1}/strategies/${encodeURIComponent(strategyId)}/adaptations${qs({ portfolio_id: portfolioId ?? undefined, explain })}`,
+  );
+export const reviewGoal = (id: string, body: { assumed_annual_return_rate?: number | null; portfolio_id?: string | null }) =>
+  apiRequest<GoalReview>(`${V1}/goal-tracker/${encodeURIComponent(id)}/review`, {
     method: "POST",
     body: JSON.stringify(body),
   });

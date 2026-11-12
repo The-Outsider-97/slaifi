@@ -28,6 +28,7 @@ from slaifi.application.contracts import (
     SafetyReviewer,
 )
 from slaifi.application.goals import EvaluateFinancialGoal, GoalTracker
+from slaifi.application.learning import LearningService, RecommendationLog
 from slaifi.application.market import GetMarketHistory, GetMarketOverview, MarketDataService
 from slaifi.application.paper import PaperTradingService
 from slaifi.application.portfolio import PortfolioGuidanceService
@@ -240,8 +241,23 @@ def create_app(
         storage_status=storage_status,
     )
     goal_tracker = GoalTracker(store, paper_service, strategy_service)
+    recommendation_log = RecommendationLog(store)
     recommendation_service = RecommendationService(
-        market_service, strategy_service, paper_service, reasoner=reasoner, safety=safety
+        market_service,
+        strategy_service,
+        paper_service,
+        reasoner=reasoner,
+        safety=safety,
+        log=recommendation_log,
+    )
+    learning_service = LearningService(
+        store,
+        recommendation_log,
+        market_service,
+        paper_service,
+        strategy_service,
+        goal_tracker,
+        recommendation_service,
     )
     guidance_service = PortfolioGuidanceService(
         paper_service, strategy_service, goal_tracker, recommendation_service, market_service
@@ -253,6 +269,7 @@ def create_app(
     app.state.paper_service = paper_service
     app.state.goal_tracker = goal_tracker
     app.state.recommendation_service = recommendation_service
+    app.state.learning_service = learning_service
     app.state.guidance_service = guidance_service
     app.state.advisor_service = AdvisorService(
         store,

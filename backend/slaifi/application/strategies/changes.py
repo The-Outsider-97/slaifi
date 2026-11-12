@@ -101,6 +101,15 @@ def _dec(value: Any, field: str) -> Decimal:
 def apply_changes(strategy: StrategyProfile, changes: Mapping[str, Any]) -> StrategyProfile:
     """Return a new validated strategy with ``changes`` applied. Unknown fields are rejected."""
 
+    try:
+        return _apply_changes(strategy, changes)
+    except (TypeError, ValueError) as exc:
+        # e.g. a non-numeric string for a numeric field: a clear 422, never a server error.
+        raise ValidationError(f"a value was not in the expected form ({exc})") from exc
+
+
+def _apply_changes(strategy: StrategyProfile, changes: Mapping[str, Any]) -> StrategyProfile:
+
     unknown = set(changes) - EDITABLE_FIELDS
     if unknown:
         raise ValidationError(f"cannot change: {', '.join(sorted(unknown))}")

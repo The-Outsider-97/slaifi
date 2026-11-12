@@ -73,6 +73,7 @@ class GoalCreate(_Body):
     basis: str | None = None
     target_amount: Decimal | None = Field(default=None, gt=0, max_digits=18, decimal_places=2)
     period: str | None = None
+    target_value: Decimal | None = Field(default=None, gt=0, max_digits=18, decimal_places=2)
     target_annual_rate: float | None = Field(default=None, gt=-1, le=10)
     horizon_years: float | None = Field(default=None, gt=0, le=100)
     starting_capital: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=2)

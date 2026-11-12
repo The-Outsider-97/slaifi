@@ -9,6 +9,7 @@ from typing import Any
 from slaifi.core.types import CurrencyCode
 from slaifi.domain.assets import AssetClass, AssetId
 from slaifi.domain.goals import GoalBasis, GoalSpec, IncomePeriod, RiskConstraints
+from slaifi.domain.learning import RecommendationOutcome, RecommendationRecord
 from slaifi.domain.paper import ExecutionDetails
 from slaifi.domain.strategies import (
     RiskTolerance,
@@ -140,6 +141,7 @@ def goal_to_dict(goal: GoalSpec) -> dict[str, Any]:
         "risk_tolerance": goal.risk_tolerance,
         "max_acceptable_drawdown_rate": goal.max_acceptable_drawdown_rate,
         "portfolio_id": goal.portfolio_id,
+        "target_value": str(goal.target_value) if goal.target_value is not None else None,
     }
 
 
@@ -162,6 +164,7 @@ def goal_from_dict(data: dict[str, Any]) -> GoalSpec:
         risk_tolerance=data.get("risk_tolerance"),
         max_acceptable_drawdown_rate=data.get("max_acceptable_drawdown_rate"),
         portfolio_id=data.get("portfolio_id"),
+        target_value=Decimal(data["target_value"]) if data.get("target_value") else None,
     )
 
 
@@ -198,4 +201,56 @@ def execution_from_dict(data: dict[str, Any]) -> ExecutionDetails:
         executed_at=dt_from_text(data["executed_at"]),
         market_open=data.get("market_open"),
         notes=tuple(data.get("notes", ())),
+    )
+
+
+def recommendation_to_dict(record: RecommendationRecord) -> dict[str, Any]:
+    return {
+        "record_id": record.record_id,
+        "symbol": record.symbol,
+        "exchange": record.exchange,
+        "asset_class": record.asset_class,
+        "action": record.action,
+        "signal_score": record.signal_score,
+        "strategy_id": record.strategy_id,
+        "issued_at": dt_to_text(record.issued_at),
+        "reference_price": str(record.reference_price),
+        "horizon_trading_days": record.horizon_trading_days,
+    }
+
+
+def recommendation_from_dict(data: dict[str, Any]) -> RecommendationRecord:
+    return RecommendationRecord(
+        record_id=data["record_id"],
+        symbol=data["symbol"],
+        exchange=data.get("exchange"),
+        asset_class=data["asset_class"],
+        action=data["action"],
+        signal_score=data.get("signal_score"),
+        strategy_id=data["strategy_id"],
+        issued_at=dt_from_text(data["issued_at"]),
+        reference_price=Decimal(data["reference_price"]),
+        horizon_trading_days=int(data["horizon_trading_days"]),
+    )
+
+
+def outcome_to_dict(outcome: RecommendationOutcome) -> dict[str, Any]:
+    return {
+        "record_id": outcome.record_id,
+        "evaluated_at": dt_to_text(outcome.evaluated_at),
+        "end_price": str(outcome.end_price),
+        "forward_return": outcome.forward_return,
+        "correct": outcome.correct,
+        "data_source": outcome.data_source,
+    }
+
+
+def outcome_from_dict(data: dict[str, Any]) -> RecommendationOutcome:
+    return RecommendationOutcome(
+        record_id=data["record_id"],
+        evaluated_at=dt_from_text(data["evaluated_at"]),
+        end_price=Decimal(data["end_price"]),
+        forward_return=float(data["forward_return"]),
+        correct=data.get("correct"),
+        data_source=data.get("data_source", ""),
     )

@@ -13,6 +13,7 @@ from typing import Any
 
 from slaifi.application.advisor import AdvisorResult, ConfirmResult
 from slaifi.application.contracts import ReconciliationReport, SafetyReview
+from slaifi.application.learning import AdaptationView, GoalReview, RefreshResult
 from slaifi.application.market import (
     ComparisonView,
     DataProvenance,
@@ -31,11 +32,12 @@ from slaifi.application.recommendations import (
 )
 from slaifi.domain.assets import AssetId
 from slaifi.domain.goals import GoalFeasibilityReport, GoalSpec
+from slaifi.domain.learning import TrackRecord
 from slaifi.domain.ledger import AuditEntry, Proposal, WatchlistItem
 from slaifi.domain.market import InstrumentInfo, OHLCVBar, ProviderCheck, ProviderStatus
 from slaifi.domain.paper import OrderDecision, PaperPortfolio
 from slaifi.domain.recommendations import RecommendationReport
-from slaifi.domain.strategies import StrategyProfile
+from slaifi.domain.strategies import PRESET_DESCRIPTIONS, StrategyProfile
 
 
 def d(value: Decimal | None) -> str | None:
@@ -415,6 +417,7 @@ def strategy(s: StrategyProfile) -> dict[str, Any]:
         "strategy_id": s.strategy_id,
         "name": s.name,
         "preset": s.preset,
+        "preset_description": PRESET_DESCRIPTIONS.get(s.preset or ""),
         "risk_tolerance": s.risk_tolerance.value,
         "horizon_days": s.horizon_days,
         "horizon_bucket": s.horizon.value,
@@ -595,6 +598,7 @@ def goal(g: GoalSpec) -> dict[str, Any]:
         "risk_tolerance": g.risk_tolerance,
         "max_acceptable_drawdown_rate": g.max_acceptable_drawdown_rate,
         "portfolio_id": g.portfolio_id,
+        "target_value": d(g.target_value),
     }
 
 
@@ -637,6 +641,24 @@ def goal_report(r: GoalFeasibilityReport) -> dict[str, Any]:
                 "detail": prog.detail,
             }
             if prog
+            else None
+        ),
+        "plan": (
+            {
+                "kind": r.plan.kind,
+                "basis_note": r.plan.basis_note,
+                "capital": d(r.plan.capital),
+                "years_used": r.plan.years_used,
+                "required_annual_return_rate": r.plan.required_annual_return_rate,
+                "required_monthly_contribution": d(r.plan.required_monthly_contribution),
+                "projected_balance": d(r.plan.projected_balance),
+                "balance_gap": d(r.plan.balance_gap),
+                "months_capital_lasts": r.plan.months_capital_lasts,
+                "lasts_beyond_100_years": r.plan.lasts_beyond_100_years,
+                "sustainable_monthly_withdrawal": d(r.plan.sustainable_monthly_withdrawal),
+                "replanned_from_today": r.plan.replanned_from_today,
+            }
+            if r.plan
             else None
         ),
         "disclaimer": "Targets are objectives, not guarantees. Scenario rates are hypothetical or user-supplied.",
@@ -817,3 +839,67 @@ def audit_entry(a: AuditEntry) -> dict[str, Any]:
         "detail": a.detail,
         "hash": a.hash,
     }
+
+
+def track_record(r: TrackRecord) -> dict[str, Any]:
+    return {
+        "logged": r.logged,
+        "pending": r.pending,
+        "scored": r.scored,
+        "hits": r.hits,
+        "hit_rate": r.hit_rate,
+        "interval_low": r.interval_low,
+        "interval_high": r.interval_high,
+        "verdict": r.verdict.value,
+        "minimum_for_verdict": r.minimum_for_verdict,
+        "by_action": [
+            {
+                "action": a.action,
+                "scored": a.scored,
+                "hits": a.hits,
+                "mean_forward_return": a.mean_forward_return,
+            }
+            for a in r.by_action
+        ],
+        "note": r.note,
+        "method": (
+            "Each logged recommendation is judged by the real price change over the next "
+            "20 trading days. Moves under 0.5% and HOLD/WATCH calls are not scored. One entry "
+            "per symbol, strategy and day. A past hit rate is not a forecast."
+        ),
+    }
+
+
+def refresh_result(r: RefreshResult) -> dict[str, Any]:
+    return {
+        "evaluated": r.evaluated,
+        "waiting": r.waiting,
+        "unchecked_symbols": list(r.unchecked_symbols),
+        "deferred_symbols": r.deferred_symbols,
+        "notes": list(r.notes),
+    }
+
+
+def adaptation(v: AdaptationView) -> dict[str, Any]:
+    return {
+        "strategy": {"strategy_id": v.strategy.strategy_id, "name": v.strategy.name},
+        "portfolio_id": v.portfolio_id,
+        "proposals": [
+            {
+                "code": p.code,
+                "kind": p.kind,
+                "title": p.title,
+                "rationale": p.rationale,
+                "evidence": list(p.evidence),
+                "change": p.change,
+            }
+            for p in v.report.proposals
+        ],
+        "notes": list(v.report.notes),
+        "track_record": track_record(v.track_record),
+        "explanation": explanation(v.explanation),
+    }
+
+
+def goal_review(v: GoalReview) -> dict[str, Any]:
+    return {"report": goal_report(v.report), "explanation": explanation(v.explanation)}

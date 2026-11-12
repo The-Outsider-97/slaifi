@@ -40,3 +40,12 @@ several parser phrasings; watchlist removal by symbol.
   from `dist/` and applies the same local-access rules as the shared server (token cookie, Host/Origin checks, CSP and
   security headers). `run_slaifi.py` is removed. `frontend/src/lib/` (formatting helpers) had been excluded by a Python
   `.gitignore` rule and is now tracked.
+
+## Clearer errors, more strategies and goals, learning and SLAI review (this revision)
+
+* **Errors**: the API's 422 now names the field and says what to type ("Starting capital must be a plain number such as 5000 — you entered “USD”") with a `fields` list; the forms validate before sending, accept `$5,000`, `5000 USD`, `6%`, and show the problem under the box. A non-numeric value in a strategy edit is now a 422, not a server error.
+* **Strategies**: six new presets (short-term balanced, long-term growth, balanced core, dividend income, capital preservation, steady accumulation) with descriptions; the editor exposes trading frequency, income focus, preferred asset classes and dividend reinvestment.
+* **Goals**: *reach a balance* and *fund withdrawals* goals with plan arithmetic, *protect my capital*, and per-goal monthly saving, largest-drop and risk options; goals behind pace are re-planned from today.
+* **Learning**: recommendation log + track record (honest sample sizes), rule-based tightening suggestions from paper-portfolio behaviour (never more risk, never automatic), see `docs/finance/learning-and-adaptation.md`. New migration 2 (`recommendation_log`).
+* **SLAI**: goal-plan review, adaptation review, and the track record passed as context to recommendation explanations, all through the existing guard and safety review.
+* **Launcher**: binds with `SO_REUSEADDR` on POSIX so a quick restart is not refused while old connections wind down.

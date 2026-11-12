@@ -2,6 +2,7 @@ import { useRef, useState, type FormEvent } from "react";
 
 import { useAction } from "../../hooks/useAsync";
 import { dateTime, humanize, money, quantity } from "../../lib/format";
+import { parseNumber } from "../../lib/numbers";
 import { placeOrder, previewOrder, type OrderBody } from "../../services/finance";
 import type { OrderOutcome, PortfolioView } from "../../types/finance";
 import { FreshnessBadge } from "./FreshnessBadge";
@@ -78,11 +79,19 @@ export function OrderTicket({ portfolio, initialSymbol = "", onFilled }: Props) 
   const preview = useAction(previewOrder);
   const place = useAction(placeOrder);
 
+  const parsedAmount = parseNumber(amount, {
+    label: mode === "quantity" ? "Quantity" : "Amount",
+    min: 0,
+    minExclusive: true,
+    maxDecimals: mode === "quantity" ? 8 : 2,
+  });
+  const amountProblem = amount.trim() !== "" && !parsedAmount.ok ? parsedAmount.message : "";
+
   const body = (): OrderBody | null => {
     const sym = symbol.trim().toUpperCase();
-    const value = amount.trim();
-    if (!sym || !value || !(Number(value) > 0)) return null;
-    return { symbol: sym, side, [mode]: value, client_order_id: orderId.current };
+    const parsed = parsedAmount;
+    if (!sym || !parsed.ok) return null;
+    return { symbol: sym, side, [mode]: parsed.text, client_order_id: orderId.current };
   };
 
   const submitPreview = async (event: FormEvent) => {
@@ -154,8 +163,10 @@ export function OrderTicket({ portfolio, initialSymbol = "", onFilled }: Props) 
               value={amount}
               onChange={(e) => { setAmount(e.target.value); edit(); }}
               placeholder={mode === "quantity" ? "number of shares" : "amount in dollars"}
+              aria-invalid={Boolean(amountProblem)}
               required
             />
+            {amountProblem ? <small className="field-error" role="alert">{amountProblem}</small> : null}
           </label>
         </div>
         <button className="primary-cta" type="submit" disabled={preview.running || !body()}>

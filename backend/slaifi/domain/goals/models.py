@@ -149,6 +149,8 @@ class GoalBasis(StrEnum):
     REALIZED_PROFIT = "realized_profit"
     TOTAL_RETURN = "total_return"
     INVESTMENT_INCOME = "investment_income"
+    TARGET_BALANCE = "target_balance"  # reach a portfolio value by a date
+    SUSTAINABLE_WITHDRAWAL = "sustainable_withdrawal"  # fund regular withdrawals for N years
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,6 +172,8 @@ class GoalSpec:
     risk_tolerance: str | None = None
     max_acceptable_drawdown_rate: float | None = None
     portfolio_id: str | None = None
+    # Balance to reach by ``horizon_years`` (basis TARGET_BALANCE).
+    target_value: Decimal | None = None
 
     def __post_init__(self) -> None:
         require_non_blank(self.goal_id, name="goal_id")
@@ -186,7 +190,25 @@ class GoalSpec:
             not isfinite(self.target_annual_rate) or self.target_annual_rate <= -1.0
         ):
             raise DomainValidationError("target_annual_rate must be finite and greater than -1")
-        if not has_amount and self.target_annual_rate is None:
+        if self.target_value is not None and self.target_value <= 0:
+            raise DomainValidationError("target_value must be positive")
+        if self.basis is GoalBasis.TARGET_BALANCE and (
+            self.target_value is None or self.horizon_years is None
+        ):
+            raise DomainValidationError(
+                "a target-balance goal needs the balance to reach and how many years you have"
+            )
+        if self.basis is GoalBasis.SUSTAINABLE_WITHDRAWAL and (
+            self.monthly_withdrawal <= 0 or self.horizon_years is None
+        ):
+            raise DomainValidationError(
+                "a withdrawal goal needs the monthly amount and how many years it must last"
+            )
+        needs_other_target = self.basis not in (
+            GoalBasis.TARGET_BALANCE,
+            GoalBasis.SUSTAINABLE_WITHDRAWAL,
+        )
+        if needs_other_target and not has_amount and self.target_annual_rate is None:
             raise DomainValidationError("a goal needs a target amount per period or a target rate")
         if self.horizon_years is not None and not (
             isfinite(self.horizon_years) and 0.0 < self.horizon_years <= 100.0
@@ -240,6 +262,24 @@ class GoalProgress:
 
 
 @dataclass(frozen=True, slots=True)
+class GoalPlan:
+    """Plan arithmetic for balance and withdrawal goals (all figures at the assumed rate)."""
+
+    kind: str  # target_balance | sustainable_withdrawal
+    basis_note: str  # what the figures were computed from, incl. any re-planning from today
+    capital: Decimal
+    years_used: float
+    required_annual_return_rate: float | None = None
+    required_monthly_contribution: Decimal | None = None
+    projected_balance: Decimal | None = None
+    balance_gap: Decimal | None = None
+    months_capital_lasts: int | None = None
+    lasts_beyond_100_years: bool = False
+    sustainable_monthly_withdrawal: Decimal | None = None
+    replanned_from_today: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class GoalFeasibilityReport:
     goal_id: str
     consistent: bool
@@ -253,3 +293,4 @@ class GoalFeasibilityReport:
     findings: tuple[GoalFinding, ...]
     assumptions: tuple[str, ...]
     progress: GoalProgress | None = None
+    plan: GoalPlan | None = None

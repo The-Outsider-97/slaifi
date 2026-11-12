@@ -46,6 +46,9 @@ with confirmation → rejected order → reconcile → reset with confirmation.
    no such run was possible here.
 6. The CI workflow changes (SLAI host checkout, new smoke) have not been executed on GitHub.
 
+7. **SLAI-backed goal review, adaptation review and the track-record context** were exercised with test doubles only (same limitation as item 3). The track record has been verified only against the synthetic feed and the local stand-in server; no real recommendation has yet aged 28 days against live prices, so expect "too early to say" for the first weeks of use.
+8. **Learning is rule-based measurement, not a trained model.** Suggestion thresholds (80 % of the drawdown limit, ×0.75 position cap, +5 % reserve, 20-result minimum) are product defaults, not tuned on data.
+
 ## Known behaviour worth knowing
 
 * Last-known (saved) history always yields "insufficient evidence", and last-known quotes are never used to fill orders — by design.

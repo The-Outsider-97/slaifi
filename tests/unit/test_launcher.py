@@ -134,6 +134,7 @@ def test_an_invalid_setting_names_the_setting(tmp_path: Path) -> None:
 
 def test_a_taken_port_is_refused_not_shared() -> None:
     first = launcher.bind("127.0.0.1", 0)
+    first.listen()  # the real server listens; only then is the port actually in use
     try:
         with pytest.raises(OSError):
             launcher.bind("127.0.0.1", first.getsockname()[1])

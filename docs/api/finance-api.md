@@ -37,7 +37,12 @@ holding cannot be priced at all.
 
 **Strategies / goals** — `GET|POST strategies` · `GET|PATCH|DELETE strategies/{id}` ·
 `POST strategies/{id}/activate` · `GET|POST goal-tracker` · `DELETE goal-tracker/{id}` ·
-`POST goal-tracker/{id}/analyze`
+`POST goal-tracker/{id}/analyze` · `POST goal-tracker/{id}/review` (analysis + SLAI reading)
+
+**Learning** — `GET learning/track-record` · `POST learning/track-record/refresh` ·
+`GET strategies/{id}/adaptations?portfolio_id=&explain=` — see `docs/finance/learning-and-adaptation.md`
+
+**Errors** — a rejected request body returns 422 `{"error":"validation_error","detail":"Starting capital must be a plain number such as 5000 …","fields":[{"field","label","message"}]}`: the field is named and the sentence says what to type.
 
 **Advisor** — `POST advisor/interpret` · `POST advisor/proposals/{id}/confirm|reject`
 

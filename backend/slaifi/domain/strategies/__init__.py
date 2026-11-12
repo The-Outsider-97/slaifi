@@ -10,6 +10,7 @@ from slaifi.domain.strategies.models import (
 )
 from slaifi.domain.strategies.presets import (
     DEFAULT_PRESET_ID,
+    PRESET_DESCRIPTIONS,
     PRESET_IDS,
     get_preset,
     instantiate_preset,
@@ -19,6 +20,7 @@ from slaifi.domain.strategies.presets import (
 __all__ = [
     "DEFAULT_PRESET_ID",
     "InvestmentHorizon",
+    "PRESET_DESCRIPTIONS",
     "PRESET_IDS",
     "RiskTolerance",
     "StrategyProfile",

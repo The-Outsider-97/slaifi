@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from slaifi.application.advisor.guards import guard_interpretation
 from slaifi.application.contracts import (
@@ -29,6 +29,9 @@ from slaifi.domain.strategies import StrategyProfile
 from slaifi.engines.backtest import BacktestResult, run_backtest
 from slaifi.engines.recommendation import RecommendationInputs, build_report
 from slaifi.engines.utils.errors import InsufficientDataError
+
+if TYPE_CHECKING:  # the log lives beside the learning service, which itself uses this one
+    from slaifi.application.learning.log import RecommendationLog
 
 DEFAULT_HISTORY_DAYS = 1825
 MAX_SCREEN_SYMBOLS = 12
@@ -127,7 +130,9 @@ class RecommendationService:
         reasoner: FinancialReasoner | None = None,
         safety: SafetyReviewer | None = None,
         clock: Callable[[], datetime] | None = None,
+        log: RecommendationLog | None = None,
     ) -> None:
+        self._log = log
         self._market = market
         self._strategies = strategies
         self._paper = paper
@@ -192,6 +197,8 @@ class RecommendationService:
                     portfolio_drawdown=drawdown,
                 )
             )
+        if self._log is not None and history.bars:
+            self._log.record(report, history.bars[-1].close)
         explanation = await self._explain(report, strategy) if explain else None
         return RecommendationView(report, history.provenance, strategy, explanation, history.notes)
 
@@ -268,7 +275,12 @@ class RecommendationService:
                 "hard_limits_override_signals": True,
             },
             assumptions={"data_mode": report.data_mode},
-            uncertainty={"prediction_validated": report.prediction is not None},
+            uncertainty={
+                "prediction_validated": report.prediction is not None,
+                # How reliable SLAIFI's own past calls have been, so the interpretation can
+                # weigh this one accordingly. Absent when nothing has been measured yet.
+                **({"track_record": self._log.context()} if self._log is not None else {}),
+            },
         )
         return await self.run_reasoner(request, purpose="recommendation_explanation")
 

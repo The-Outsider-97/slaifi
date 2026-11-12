@@ -267,6 +267,7 @@ export type Strategy = {
   strategy_id: string;
   name: string;
   preset: string | null;
+  preset_description?: string | null;
   risk_tolerance: string;
   horizon_days: number;
   horizon_bucket: string;
@@ -415,6 +416,22 @@ export type Goal = {
   risk_tolerance: string | null;
   max_acceptable_drawdown_rate: number | null;
   portfolio_id: string | null;
+  target_value: string | null;
+};
+
+export type GoalPlan = {
+  kind: string;
+  basis_note: string;
+  capital: string | null;
+  years_used: number;
+  required_annual_return_rate: number | null;
+  required_monthly_contribution: string | null;
+  projected_balance: string | null;
+  balance_gap: string | null;
+  months_capital_lasts: number | null;
+  lasts_beyond_100_years: boolean;
+  sustainable_monthly_withdrawal: string | null;
+  replanned_from_today: boolean;
 };
 
 export type GoalReport = {
@@ -447,6 +464,7 @@ export type GoalReport = {
     on_track: boolean | null;
     detail: string;
   } | null;
+  plan?: GoalPlan | null;
   disclaimer: string;
 };
 
@@ -615,3 +633,43 @@ export type ProviderCheck = {
   detail: string;
   latency_ms: number | null;
 };
+
+export type TrackRecord = {
+  logged: number;
+  pending: number;
+  scored: number;
+  hits: number;
+  hit_rate: number | null;
+  interval_low: number | null;
+  interval_high: number | null;
+  verdict: "insufficient_sample" | "better_than_chance" | "no_clear_edge" | "worse_than_chance";
+  minimum_for_verdict: number;
+  by_action: { action: string; scored: number; hits: number; mean_forward_return: number | null }[];
+  note: string;
+  method: string;
+};
+
+export type TrackRecordRefresh = {
+  refresh: { evaluated: number; waiting: number; unchecked_symbols: string[]; deferred_symbols: number; notes: string[] };
+  track_record: TrackRecord;
+};
+
+export type AdaptationProposal = {
+  code: string;
+  kind: "tighten" | "align" | "observation";
+  title: string;
+  rationale: string;
+  evidence: string[];
+  change: Record<string, unknown> | null;
+};
+
+export type AdaptationResponse = {
+  strategy: { strategy_id: string; name: string };
+  portfolio_id: string | null;
+  proposals: AdaptationProposal[];
+  notes: string[];
+  track_record: TrackRecord;
+  explanation: Explanation | null;
+};
+
+export type GoalReview = { report: GoalReport; explanation: Explanation };

@@ -7,6 +7,7 @@ from fastapi import Header, Request
 from slaifi.application.analysis import AnalyzeMarketSeries, AnalyzePortfolio
 from slaifi.application.contracts import FinancialReasoner
 from slaifi.application.goals import EvaluateFinancialGoal
+from slaifi.application.learning import LearningService
 from slaifi.application.market import GetMarketHistory
 from slaifi.application.market.get_overview import GetMarketOverview
 from slaifi.core.config import Settings
@@ -109,3 +110,7 @@ def get_guidance_service(request: Request) -> PortfolioGuidanceService:
 
 def get_advisor_service(request: Request) -> AdvisorService:
     return cast(AdvisorService, _state_value(request, "advisor_service"))
+
+
+def get_learning_service(request: Request) -> LearningService:
+    return cast(LearningService, _state_value(request, "learning_service"))

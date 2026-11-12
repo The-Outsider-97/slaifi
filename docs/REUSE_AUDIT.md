@@ -27,6 +27,12 @@ SLAIFI is a modular monolith (FastAPI + React/Vite) with enforced layering
 | Last-known market cache (durable SQLite beside the ledger, separate file `market_cache.db`) | same `applications.tools.database.Database` | `infrastructure/market_data/sqlite_cache.py` (falls back to an in-memory cache if the host Database is unavailable) |
 | Safety screening of SLAI text | SLAI `SafetyAgent`, created through the **same** factory/shared runtime via `SlaiFinancialReasoner.agent_for` | `integrations/slai/safety.py` |
 
+The learning feature added in this revision reuses rather than duplicates: its recommendation log is
+one more `Migration` (schema v2) on the same `Database`; its SLAI calls (`goal_plan_review`,
+`strategy_adaptation_review`) go through the **existing** guarded runner
+`RecommendationService.run_reasoner` (interpretation guard + SafetyAgent review) that the advisor and
+guidance already share — no second SLAI path, no second guard.
+
 New code was written only where SLAI has no equivalent: financial calculations,
 the strategy/goal/paper-trading domain and the hash-chained audit log (which sits on top of
 SLAI's `Database`). The SLAI reasoning port is the only route to SLAI agents; the
