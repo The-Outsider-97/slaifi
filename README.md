@@ -3,22 +3,26 @@ SLAIFI combines normalized financial data, deterministic quantitative analysis, 
 
 SLAIFI is decision-support software. Scenarios, forecasts, targets, confidence values and interpretations are uncertain and are not guarantees of financial outcomes. SLAIFI offers **paper trading only**: simulated orders against virtual cash. Real-money trading does not exist in the code and cannot be enabled.
 
-Quick start (from the SLAI root, e.g. `G:\GAIA\AI\SLAI`)
-1. `python -m pip install "fastapi>=0.115,<1.0" "httpx>=0.27,<1.0" "pydantic>=2.9,<3.0" "pydantic-settings>=2.5,<3.0" "uvicorn[standard]>=0.30,<1.0"`
-2. Set at least one – ideally three – free market-data keys, e.g. `$env:SLAIFI_TWELVEDATA_API_KEY`, `$env:SLAIFI_TIINGO_API_KEY`, `$env:SLAIFI_FMP_API_KEY` (all variables: `.env.example`).
-3. `python run_slaifi.py`, then open **http://127.0.0.1:8000**. That is the whole app: the launcher builds the web UI on first run (and after UI changes; needs Node.js LTS) and the API serves it. No second terminal, no `npm` commands.
-4. Open Settings → Market data sources → **Check providers** to confirm each key works.
+Quick start (same as SPlanner, Reader and SPADRA; from the SLAI root, e.g. `G:\GAIA\AI\SLAI`)
+```powershell
+python -m pip install "fastapi>=0.115,<1.0" "httpx>=0.27,<1.0" "pydantic>=2.9,<3.0" "pydantic-settings>=2.5,<3.0" "uvicorn[standard]>=0.30,<1.0"
+
+cd applications\slaifi
+npm.cmd run build            # installs the UI's packages and builds dist/
+
+cd G:\GAIA\AI\SLAI
+python -m applications.slaifi
+```
+It prints a banner and a link such as `http://127.0.0.1:8777/?token=...` (port 8777; the link carries a one-time access token and opens in your browser). Free market-data keys go in `G:\GAIA\AI\SLAI\.env` (or the environment) as `SLAIFI_TWELVEDATA_API_KEY=...`, `SLAIFI_TIINGO_API_KEY=...`, `SLAIFI_FMP_API_KEY=...` (and optionally `SLAIFI_FINNHUB_API_KEY`, `SLAIFI_ALPHAVANTAGE_API_KEY`). Data lives in `%LOCALAPPDATA%\SLAI\SLAIFI`; settings in `applications\slaifi\configs\config.yaml`. Then open Settings → Market data sources → **Check providers**.
 
 Runtime location
 SLAIFI is designed to live at:
 
 SLAI/
-├── run_slaifi.py
 ├── logs/
 ├── src/
 └── applications/
     └── slaifi/
-The repository copy of run_slaifi.py is written for its final location at SLAI/run_slaifi.py.
 
 Architecture
 React frontend
@@ -59,7 +63,7 @@ python -m venv .venv
 # Linux/macOS: source .venv/bin/activate
 python -m pip install -e ".[dev]"
 pytest
-ruff check backend tests run_slaifi.py
+ruff check backend tests
 mypy backend
 Frontend development
 Requires a current Node.js LTS release.
@@ -70,7 +74,7 @@ npm run typecheck
 npm test
 npm run build
 npm run dev
-Set VITE_API_BASE_URL when FastAPI is not available at http://127.0.0.1:8000.
+For `npm run dev` the UI talks to an API on http://127.0.0.1:8000 (start it with `python -m uvicorn slaifi.main:app`); set VITE_API_BASE_URL to change that. The built UI served by `python -m applications.slaifi` uses its own address.
 
 Core design principles
 Financial calculations are authoritative in Domain/Engines; SLAI provides contextual reasoning only.

@@ -48,7 +48,7 @@ def test_no_mock_or_illustrative_data_path_ships_in_the_package() -> None:
 
 def test_backend_and_launcher_contain_no_path_hacks() -> None:
     forbidden = ("os.getcwd(", "Path.cwd(", "sys.path.append(", "sys.path.insert(")
-    paths = [*PACKAGE_ROOT.rglob("*.py"), ROOT / "run_slaifi.py"]
+    paths = [*PACKAGE_ROOT.rglob("*.py"), ROOT / "__main__.py"]
     violations: list[str] = []
     for path in paths:
         text = path.read_text(encoding="utf-8")

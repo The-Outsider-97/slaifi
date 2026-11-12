@@ -7,42 +7,49 @@
 * At least one free market-data key (three or more recommended) — see below.
 
 ## Install inside SLAI
+SLAIFI starts exactly like SPlanner, Reader and SPADRA:
 ```
 <SLAI_ROOT>\applications\slaifi        # this repository
-<SLAI_ROOT>\run_slaifi.py              # launcher (copy of ./run_slaifi.py)
 ```
 
-**1. Install the Python dependencies first** (the launcher fails with `No module named
-'pydantic_settings'` otherwise):
+**1. Python dependencies** (once; the launcher stops with `No module named 'pydantic_settings'` otherwise):
 ```
 cd <SLAI_ROOT>
 python -m pip install "fastapi>=0.115,<1.0" "httpx>=0.27,<1.0" "pydantic>=2.9,<3.0" "pydantic-settings>=2.5,<3.0" "uvicorn[standard]>=0.30,<1.0"
 ```
-(or `python -m pip install -e applications/slaifi[dev]` to also get the test tools).
 
-**2. Set your market-data keys** in the same terminal:
+**2. Build the web UI** (after install and after UI changes; needs Node.js LTS):
 ```
-$env:SLAIFI_TWELVEDATA_API_KEY = "..."      # PowerShell; use `export` on Linux/macOS
-$env:SLAIFI_TIINGO_API_KEY     = "..."
-$env:SLAIFI_FMP_API_KEY        = "..."
+cd <SLAI_ROOT>\applications\slaifi
+npm.cmd run build
 ```
+This installs the UI's packages and builds `applications\slaifi\dist`, like `npm run build` in the other apps.
 
-**3. Start SLAIFI — one command:**
+**3. Market-data keys.** Add your free keys to `<SLAI_ROOT>\.env` (or set them in the environment):
 ```
-python run_slaifi.py
+SLAIFI_TWELVEDATA_API_KEY=...
+SLAIFI_TIINGO_API_KEY=...
+SLAIFI_FMP_API_KEY=...
 ```
-Then open **http://127.0.0.1:8000**. The launcher builds the web UI the first time (and again after
-the UI sources change) using Node.js LTS, and the API serves it, so there is no second terminal and
-no `npm` command to run. If Node.js is missing the API still starts (docs at `/docs`) and the log
-says what to install. `SLAIFI_SKIP_UI_BUILD=1` skips the build step.
+Only `SLAIFI_*` lines are read from that file. Keys are never logged or shown.
 
-*Developing the UI instead?* From `applications\slaifi\frontend` (the folder that holds
-`package.json`) run `npm.cmd install` then `npm.cmd run dev` (http://localhost:5173, talks to the API
-on port 8000).
+**4. Start it:**
+```
+cd <SLAI_ROOT>
+python -m applications.slaifi
+```
+It prints the data folder, config, configured market sources and a link such as
+`http://127.0.0.1:8777/?token=...` and opens it in your browser (`--no-browser` to skip, `--port` to
+change the port). The token in the link is exchanged for a private cookie, so only your browser can
+use SLAIFI. Ctrl+C stops it.
 
-**4. Check the sources.** Open Settings → *Market data sources* and press **Check providers**. Each
+**5. Check the sources.** Open Settings → *Market data sources* and press **Check providers**. Each
 configured source is called once and reports *Working* or the exact problem (key rejected, plan
 does not include the data, rate-limited, unreachable). The page never displays a key.
+
+*Developing the UI instead?* From `applications\slaifi\frontend` run `npm.cmd install` and
+`npm.cmd run dev` (http://localhost:5173) against an API started with
+`python -m uvicorn slaifi.main:app` (no access token in that mode; for development only).
 
 ## Market data: free keys and what they provide
 SLAIFI shows real data only. A request is answered by the first source in the order that has the
@@ -68,12 +75,12 @@ the result; later loads use the cache. With only the 25-call Alpha Vantage key, 
 quickly — that is why three or more sources are recommended.
 
 ## Configuration (environment variables, prefix `SLAIFI_`)
-See `.env.example` for a complete annotated file.
+Precedence: `configs/config.yaml` < `<SLAI root>\.env` < environment < command line. See `.env.example` for a complete annotated file.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `SLAIFI_ENVIRONMENT` | `development` | `development`, `test` or `production` |
-| `SLAIFI_FRONTEND_DIST_DIR` | `<slaifi>/frontend/dist` | where the built UI is served from (rarely needed) |
+| `SLAIFI_FRONTEND_DIST_DIR` | `<slaifi>/dist` | where the built UI is served from (`--client-dir`) |
 | `SLAIFI_DATA_DIR` | SLAI per-app folder | ledger database (`slaifi.db`), last-known market cache (`market_cache.db`), backups |
 | `SLAIFI_<SOURCE>_API_KEY` | – | one per source above; stored as a secret, never logged or returned |
 | `SLAIFI_<SOURCE>_BASE_URL` | provider default | override only for a proxy or a compatible endpoint |
@@ -89,4 +96,4 @@ See `.env.example` for a complete annotated file.
 
 Real-money trading has no setting because it does not exist in the code.
 
-Restart SLAIFI after changing a key: keys are read once at start-up.
+Restart SLAIFI after changing a key or `.env`: they are read once at start-up.

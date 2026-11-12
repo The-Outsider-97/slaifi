@@ -7,13 +7,13 @@ Results below are from commands actually executed in the development sandbox (no
 
 | Check | Result |
 | --- | --- |
-| `pytest` (backend: unit, financial, API, architecture, integration workflow, degraded operation, provider adapters, multi-provider failover, last-known cache) | **273 passed** |
-| `ruff check backend tests run_slaifi.py` (E501 ignored; `ruff format` owns line length) | all checks passed |
+| `pytest` (backend: unit, financial, API, architecture, integration workflow, degraded operation, provider adapters, multi-provider failover, last-known cache) | **285 passed** |
+| `ruff check backend tests` (E501 ignored; `ruff format` owns line length) | all checks passed |
 | `ruff format --check` | 216 files formatted |
 | `mypy --strict` on the whole package | no defects in SLAIFI code; the only reports are sandbox artefacts (SLAI host modules and the `pydantic_settings` shim have no type stubs) |
 | TypeScript `tsc --noEmit` (app source) | clean, except `import.meta.env` types that need `vite/client` (absent in the sandbox) |
 | esbuild bundle of the UI | builds |
-| Browser end-to-end (Playwright/Chromium vs. live uvicorn + built UI, with the four configured providers answered by a **local stand-in HTTP server** that serves documented response shapes): live → failover (one provider rate-limited, one down) → last known data → NOT AVAILABLE; orders refused on last-known prices; holdings labelled by price basis; Check providers; keys never displayed or logged; last-known data survives a backend restart; plus analysis, watchlist, comparison, paper orders, advisor, strategies, goals, settings, backup, mobile overflow, console errors, 5xx | **54 / 54** |
+| Browser end-to-end (Playwright/Chromium vs. the real launcher `python -m applications.slaifi` (token link, cookie, shared security headers and Content-Security-Policy) serving the built UI, with the four configured providers answered by a **local stand-in HTTP server** that serves documented response shapes): live → failover (one provider rate-limited, one down) → last known data → NOT AVAILABLE; orders refused on last-known prices; holdings labelled by price basis; Check providers; keys never displayed or logged; last-known data survives a backend restart; plus analysis, watchlist, comparison, paper orders, advisor, strategies, goals, settings, backup, mobile overflow, console errors, 5xx | **54 / 54** |
 | Frontend unit tests (24: format, App, finance components) | 24 passed — on a minimal stand-in for vitest (see below) |
 | Standalone API smoke from CI (`/health`, `system/status`, overview, SLAI status) | passed |
 
@@ -42,7 +42,7 @@ with confirmation → rejected order → reconcile → reset with confirmation.
    *Market data sources* → **Check providers** makes one real request per key and reports exactly
    what failed. Free-tier limits (e.g. Alpha Vantage 25/day) are assumptions that may have changed.
    When a provider omits a currency, USD is assumed.
-5. The first full run in your environment should be `python run_slaifi.py` followed by the UI;
+5. The first full run in your environment should be `npm.cmd run build` in `applications\slaifi` and then `python -m applications.slaifi` from the SLAI root;
    no such run was possible here.
 6. The CI workflow changes (SLAI host checkout, new smoke) have not been executed on GitHub.
 

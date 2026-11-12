@@ -1,0 +1,12 @@
+{
+  "name": "slai-slaifi",
+  "version": "0.3.0",
+  "description": "SLAI SLAIFI - financial-intelligence decision support with paper trading, on real market data only.",
+  "private": true,
+  "scripts": {
+    "build": "npm install --prefix frontend --no-audit --no-fund && npm run build:ui --prefix frontend",
+    "typecheck": "npm run typecheck --prefix frontend",
+    "test": "npm test --prefix frontend",
+    "start": "npm run build && python -m applications.slaifi"
+  }
+}

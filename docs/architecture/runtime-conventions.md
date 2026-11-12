@@ -50,15 +50,16 @@ Reusable numerical input helpers belong here: finite/positive series validation,
 
 A helper used by only one algorithm should stay local to that algorithm rather than being moved into a generic utility file.
 
-## Root launcher
+## Launcher
 
-The delivered `run_slaifi.py` must end at `SLAI/run_slaifi.py`. It:
+SLAIFI starts like every other SLAI application: `python -m applications.slaifi` from the SLAI root
+(`applications/slaifi/__main__.py` → `backend/slaifi/launcher.py`). It:
 
-1. loads SLAIFI Settings;
-2. maps the configured log level to SLAI `LoggingSettings`;
-3. configures SLAI logging once;
-4. imports the composed FastAPI app after logging is ready;
-5. starts Uvicorn using SLAIFI host/port settings and `log_config=None` so Uvicorn does not replace SLAI logging;
-6. returns explicit failure exit codes and shuts down launcher-owned logging.
+1. parses the shared options (`add_server_arguments`: `--port`, `--data-dir`, `--config`, `--client-dir`, `--token`, `--no-browser`, `--slai-root`) and refuses non-loopback hosts;
+2. loads `configs/config.yaml` through the shared `load_section`, then `<SLAI root>/.env` and the environment (they win), then the command line;
+3. configures SLAI logging once (`logs/logger.py`) and shuts it down on exit;
+4. binds the listening socket itself (a taken port is an error, never shared) and builds the FastAPI app with the shared Content-Security-Policy and security headers;
+5. serves it with uvicorn (`log_config=None`, `access_log=False` so the token in the start-up link is never logged) through the shared `serve()` banner, browser opening and clean shutdown;
+6. prints a link carrying a one-time access token; `api/local_access.py` trades it for an HttpOnly, SameSite=Strict cookie and enforces Host/Origin checks (the same rules as `applications/tools/server`).
 
-It contains no path discovery or machine-specific paths.
+The launcher imports the SLAI kit (`applications.tools`) and therefore only runs inside SLAI. It contains no path discovery or machine-specific paths.

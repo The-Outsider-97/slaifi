@@ -2,8 +2,10 @@
 
 | Symptom | Cause / action |
 | --- | --- |
-| `ModuleNotFoundError: applications` / `logs` | SLAI root is not on the path; start via `python run_slaifi.py` from the SLAI root or install SLAIFI inside SLAI. |
-| Browser shows `{"detail":"Not Found"}` at `/` | The web UI is not built. Install Node.js LTS and run `python run_slaifi.py` again (or run `npm.cmd install` then `npm.cmd run build:ui` in `applications\slaifi\frontend`). |
+| `ModuleNotFoundError: applications` / `logs` | Start from the SLAI root with `python -m applications.slaifi` (`python run_slaifi.py` no longer exists). |
+| `The web client is not built` | Run `npm.cmd run build` in `applications\slaifi`, then start again. |
+| Browser says the page needs the link SLAIFI printed | Open the full link from the terminal (it contains `?token=...`) or restart SLAIFI for a new one. |
+| `could not start ... Is another copy already running?` | Port 8777 is taken. Stop the other copy or use `--port`. |
 | UI says **NOT AVAILABLE** | No source answered and nothing was saved yet. Set at least one `SLAIFI_<SOURCE>_API_KEY`, restart, then Settings → Check providers. |
 | UI says **LAST KNOWN DATA** | Every source failed just now; SLAIFI shows the last real observation it saved, with its time. Open Settings → Market data sources for each source's last problem. Orders on such prices are refused. |
 | A source shows *API key rejected* | The key was refused (401/403). Fix the variable and restart; the status persists until restart. |

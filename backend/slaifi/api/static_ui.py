@@ -1,6 +1,6 @@
 """Serve the built web UI from the API process, so one command starts everything.
 
-The UI is a static single-page app (``frontend/dist``, produced by ``vite build``). It is mounted
+The UI is a static single-page app (``dist/``, produced by ``npm run build``). It is mounted
 after every API route, so ``/api/...``, ``/health`` and ``/docs`` always win; any other path that is
 not a real file falls back to ``index.html``.
 """
@@ -27,9 +27,9 @@ class _SinglePageApp(StaticFiles):
 
 
 def default_dist_dir() -> Path:
-    """``<slaifi root>/frontend/dist`` (this file is ``backend/slaifi/api/static_ui.py``)."""
+    """``<slaifi root>/dist`` (this file is ``backend/slaifi/api/static_ui.py``)."""
 
-    return Path(__file__).resolve().parents[3] / "frontend" / "dist"
+    return Path(__file__).resolve().parents[3] / "dist"
 
 
 def mount_frontend(app: FastAPI, dist_dir: Path | None = None) -> bool:

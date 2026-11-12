@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -14,6 +14,7 @@ from logs.logger import get_logger
 
 from slaifi import __version__
 from slaifi.api.errors import install_exception_handlers
+from slaifi.api.local_access import LocalAccessMiddleware
 from slaifi.api.router import api_router
 from slaifi.api.static_ui import mount_frontend
 from slaifi.application.advisor import AdvisorService
@@ -107,8 +108,15 @@ def create_app(
     slai_shared_memory: Any = None,
     finance_store: FinanceStore | None = None,
     safety_reviewer: SafetyReviewer | None = None,
+    access_token: str | None = None,
+    security_headers: Mapping[str, str] | None = None,
 ) -> FastAPI:
-    """Create and wire the SLAIFI application without coupling the financial core to SLAI."""
+    """Create and wire the SLAIFI application without coupling the financial core to SLAI.
+
+    ``access_token`` (set by the launcher) switches on the local-access rules every SLAI application
+    follows: token-to-cookie handshake, Host/Origin checks and ``security_headers`` on responses.
+    Tests and ``uvicorn slaifi.main:app`` leave it unset.
+    """
 
     runtime_settings = settings or get_settings()
     owns_gateway = market_gateway is None
@@ -198,6 +206,13 @@ def create_app(
         allow_headers=["Content-Type", "X-Request-ID", "X-SLAIFI-Client"],
     )
     install_exception_handlers(app)
+    if access_token:
+        app.add_middleware(
+            LocalAccessMiddleware,
+            token=access_token,
+            port=runtime_settings.api_port,
+            security_headers=security_headers,
+        )
 
     assets = tuple(AssetRef(symbol=symbol) for symbol in runtime_settings.market_overview_symbols)
     app.state.settings = runtime_settings
