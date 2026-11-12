@@ -20,24 +20,25 @@ python -m pip install "fastapi>=0.115,<1.0" "httpx>=0.27,<1.0" "pydantic>=2.9,<3
 ```
 (or `python -m pip install -e applications/slaifi[dev]` to also get the test tools).
 
-**2. Set your market-data keys** in the same terminal, then start the API from the SLAI root:
+**2. Set your market-data keys** in the same terminal:
 ```
 $env:SLAIFI_TWELVEDATA_API_KEY = "..."      # PowerShell; use `export` on Linux/macOS
 $env:SLAIFI_TIINGO_API_KEY     = "..."
 $env:SLAIFI_FMP_API_KEY        = "..."
+```
+
+**3. Start SLAIFI — one command:**
+```
 python run_slaifi.py
 ```
-The launcher starts the API on `127.0.0.1:8000`.
+Then open **http://127.0.0.1:8000**. The launcher builds the web UI the first time (and again after
+the UI sources change) using Node.js LTS, and the API serves it, so there is no second terminal and
+no `npm` command to run. If Node.js is missing the API still starts (docs at `/docs`) and the log
+says what to install. `SLAIFI_SKIP_UI_BUILD=1` skips the build step.
 
-**3. Start the UI from the `frontend` folder** (running `npm` anywhere else fails with ENOENT because
-`package.json` lives in `frontend`):
-```
-cd <SLAI_ROOT>\applications\slaifi\frontend
-npm.cmd install
-npm.cmd run dev          # development: http://localhost:5173
-# or: npm.cmd run build
-```
-(On Windows PowerShell `npm.cmd` avoids the script-execution policy block on `npm.ps1`.)
+*Developing the UI instead?* From `applications\slaifi\frontend` (the folder that holds
+`package.json`) run `npm.cmd install` then `npm.cmd run dev` (http://localhost:5173, talks to the API
+on port 8000).
 
 **4. Check the sources.** Open Settings → *Market data sources* and press **Check providers**. Each
 configured source is called once and reports *Working* or the exact problem (key rejected, plan
@@ -72,6 +73,7 @@ See `.env.example` for a complete annotated file.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `SLAIFI_ENVIRONMENT` | `development` | `development`, `test` or `production` |
+| `SLAIFI_FRONTEND_DIST_DIR` | `<slaifi>/frontend/dist` | where the built UI is served from (rarely needed) |
 | `SLAIFI_DATA_DIR` | SLAI per-app folder | ledger database (`slaifi.db`), last-known market cache (`market_cache.db`), backups |
 | `SLAIFI_<SOURCE>_API_KEY` | – | one per source above; stored as a secret, never logged or returned |
 | `SLAIFI_<SOURCE>_BASE_URL` | provider default | override only for a proxy or a compatible endpoint |

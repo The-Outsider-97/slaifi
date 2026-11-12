@@ -34,3 +34,6 @@ several parser phrasings; watchlist removal by symbol.
 * **API/UI**: richer `provenance` (source, attempts, `last_known`, `saved_at`, `available`),
   `GET system/providers`, `POST system/providers/check`, Settings → *Market data sources*.
 * **Docs**: setup order (install dependencies first, run `npm` from `frontend`), key sign-up, variables.
+* **One command**: `python run_slaifi.py` now builds the web UI when needed and the API serves it at
+  http://127.0.0.1:8000 (no separate `npm run dev`). `frontend/src/lib/` (formatting helpers) had been
+  excluded by a Python `.gitignore` rule and is now tracked.

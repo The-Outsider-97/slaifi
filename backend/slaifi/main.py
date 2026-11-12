@@ -15,6 +15,7 @@ from logs.logger import get_logger
 from slaifi import __version__
 from slaifi.api.errors import install_exception_handlers
 from slaifi.api.router import api_router
+from slaifi.api.static_ui import mount_frontend
 from slaifi.application.advisor import AdvisorService
 from slaifi.application.analysis import AnalyzeMarketSeries, AnalyzePortfolio
 from slaifi.application.contracts import (
@@ -249,13 +250,15 @@ def create_app(
         safety=safety,
     )
     app.include_router(api_router)
+    ui_served = mount_frontend(app, runtime_settings.frontend_dist_dir)
 
     logger.info(
-        "SLAIFI composition complete | env=%s | market_sources=%s | slai_enabled=%s | slai_quality=%s",
+        "SLAIFI composition complete | env=%s | market_sources=%s | slai_enabled=%s | slai_quality=%s | ui=%s",
         runtime_settings.environment,
         ",".join(p.name for p in gateway.provider_status() if p.configured) or "none-configured",
         runtime_settings.slai_enabled,
         runtime_settings.slai_quality_enabled,
+        "served" if ui_served else "not-built",
     )
     return app
 

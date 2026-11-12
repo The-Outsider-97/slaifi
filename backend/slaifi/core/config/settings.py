@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     environment: Literal["development", "test", "production"] = "development"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     data_dir: Path | None = None
+    # Built web UI served by the API (default: <slaifi root>/frontend/dist when it exists).
+    frontend_dist_dir: Path | None = None
 
     api_host: str = "127.0.0.1"
     api_port: int = Field(default=8000, ge=1, le=65535)

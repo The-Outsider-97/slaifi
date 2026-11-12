@@ -6,9 +6,8 @@ SLAIFI is decision-support software. Scenarios, forecasts, targets, confidence v
 Quick start (from the SLAI root, e.g. `G:\GAIA\AI\SLAI`)
 1. `python -m pip install "fastapi>=0.115,<1.0" "httpx>=0.27,<1.0" "pydantic>=2.9,<3.0" "pydantic-settings>=2.5,<3.0" "uvicorn[standard]>=0.30,<1.0"`
 2. Set at least one – ideally three – free market-data keys, e.g. `$env:SLAIFI_TWELVEDATA_API_KEY`, `$env:SLAIFI_TIINGO_API_KEY`, `$env:SLAIFI_FMP_API_KEY` (all variables: `.env.example`).
-3. `python run_slaifi.py` starts the API on http://127.0.0.1:8000.
-4. UI: `cd applications\slaifi\frontend` (the `package.json` is there), then `npm.cmd install` and `npm.cmd run dev`.
-5. Open Settings → Market data sources → **Check providers** to confirm each key works.
+3. `python run_slaifi.py`, then open **http://127.0.0.1:8000**. That is the whole app: the launcher builds the web UI on first run (and after UI changes; needs Node.js LTS) and the API serves it. No second terminal, no `npm` commands.
+4. Open Settings → Market data sources → **Check providers** to confirm each key works.
 
 Runtime location
 SLAIFI is designed to live at:

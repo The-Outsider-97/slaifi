@@ -254,14 +254,14 @@ describe("MarketOverviewPage", () => {
 
     const button = await screen.findByRole("button", { name: /Explore the reasoning/i });
     await waitFor(() => expect(button).toBeEnabled());
-    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/api/v1/analysis/market"))).toHaveLength(0);
+    expect(fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/api/v1/analysis/market"))).toHaveLength(0);
 
     await user.click(button);
 
     expect(await screen.findByText("Evidence, in context.")).toBeInTheDocument();
     expect(screen.getByText(/positive short-term move/i)).toBeInTheDocument();
     expect(screen.getByText("cause_effect")).toBeInTheDocument();
-    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/api/v1/analysis/market"))).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/api/v1/analysis/market"))).toHaveLength(1);
   });
 
   it("shows an unavailable state when market API fails without a fake fallback", async () => {

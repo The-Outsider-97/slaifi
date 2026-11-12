@@ -8,7 +8,10 @@ import type {
   SlaiRuntimeStatus,
 } from "../types/market";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+// Built UI is served by the API itself (same origin). `npm run dev` runs on another port, so it
+// talks to the local API directly. VITE_API_BASE_URL overrides both.
+const API_BASE_URL: string =
+  import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ? "http://127.0.0.1:8000" : "");
 
 const RANGE_DAYS: Record<MarketRange, number> = {
   "1W": 7,
