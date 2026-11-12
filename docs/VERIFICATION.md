@@ -7,14 +7,14 @@ Results below are from commands actually executed in the development sandbox (no
 
 | Check | Result |
 | --- | --- |
-| `pytest` (backend: unit, financial, API, architecture, integration workflow, degraded operation, provider adapters, multi-provider failover, last-known cache) | **285 passed** |
+| `pytest` (backend: unit, financial, API, architecture, integration workflow, degraded operation, provider adapters, multi-provider failover, last-known cache) | **333 passed** |
 | `ruff check backend tests` (E501 ignored; `ruff format` owns line length) | all checks passed |
-| `ruff format --check` | 216 files formatted |
+| `ruff format --check` | 236 files formatted |
 | `mypy --strict` on the whole package | no defects in SLAIFI code; the only reports are sandbox artefacts (SLAI host modules and the `pydantic_settings` shim have no type stubs) |
 | TypeScript `tsc --noEmit` (app source) | clean, except `import.meta.env` types that need `vite/client` (absent in the sandbox) |
 | esbuild bundle of the UI | builds |
-| Browser end-to-end (Playwright/Chromium vs. the real launcher `python -m applications.slaifi` (token link, cookie, shared security headers and Content-Security-Policy) serving the built UI, with the four configured providers answered by a **local stand-in HTTP server** that serves documented response shapes): live → failover (one provider rate-limited, one down) → last known data → NOT AVAILABLE; orders refused on last-known prices; holdings labelled by price basis; Check providers; keys never displayed or logged; last-known data survives a backend restart; plus analysis, watchlist, comparison, paper orders, advisor, strategies, goals, settings, backup, mobile overflow, console errors, 5xx | **54 / 54** |
-| Frontend unit tests (24: format, App, finance components) | 24 passed — on a minimal stand-in for vitest (see below) |
+| Browser end-to-end (Playwright/Chromium vs. the real launcher `python -m applications.slaifi` (token link, cookie, shared security headers and Content-Security-Policy) serving the built UI, with the four configured providers answered by a **local stand-in HTTP server** that serves documented response shapes): live → failover (one provider rate-limited, one down) → last known data → NOT AVAILABLE; orders refused on last-known prices; holdings labelled by price basis; Check providers; keys never displayed or logged; last-known data survives a backend restart; plus analysis, watchlist, comparison, paper orders, advisor, strategies, goals, settings, backup, mobile overflow, console errors, 5xx | **54 / 54**, plus a second run for the new work (clear error messages, new goal types, strategy suggestions, track-record panel): **16 / 16** |
+| Frontend unit tests (30: format, number parsing, App, finance components) | 30 passed — on a minimal stand-in for vitest (see below) |
 | Standalone API smoke from CI (`/health`, `system/status`, overview, SLAI status) | passed |
 
 The integration workflow covers: select a strategy → search → quote/series → recommendation →
@@ -24,7 +24,7 @@ with confirmation → rejected order → reconcile → reset with confirmation.
 ## NOT executed / limitations (please read)
 
 1. **Real vitest and the page tests (`MarketOverviewPage.test.tsx`, `MyPortfolioPage.test.tsx`) were not run**:
-   vitest and Testing Library cannot be installed offline. The 24 unit tests above ran on a tiny
+   vitest and Testing Library cannot be installed offline. The 30 unit tests above ran on a tiny
    stand-in runner that implements only the matchers they use. Run `npm install && npm test`.
 2. **`mypy` on `slaifi.core`** reports one error caused by a sandbox-only `pydantic_settings` shim
    (`BaseSettings` typed as `Any`). It was not a defect in the repository; the real package was not available.
