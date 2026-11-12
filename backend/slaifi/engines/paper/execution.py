@@ -20,9 +20,9 @@ from slaifi.domain.paper import (
     Rejection,
     RejectionCode,
 )
-from slaifi.domain.portfolio import PortfolioSnapshot, Trade, TradeSide
+from slaifi.domain.portfolio import SHORT_MARGIN_RATE, PortfolioSnapshot, Trade, TradeSide
 from slaifi.domain.strategies import StrategyProfile, TransactionCosts
-from slaifi.engines.strategy import check_buy
+from slaifi.engines.strategy import check_buy, check_short
 
 _PRICE_STEP = Decimal("0.000001")
 _CENT = Decimal("0.01")
@@ -35,13 +35,10 @@ def commission_for(gross: Decimal, costs: TransactionCosts) -> Decimal:
 
 
 def execution_price(quote_price: Decimal, side: TradeSide, costs: TransactionCosts) -> Decimal:
-    """Slippage moves the fill against the trader: buys pay more, sells receive less."""
+    """Slippage moves the fill against the trader: buys and covers pay more; sells and shorts receive less."""
 
-    factor = (
-        Decimal(1) + costs.slippage_rate
-        if side is TradeSide.BUY
-        else Decimal(1) - costs.slippage_rate
-    )
+    pays_more = side in (TradeSide.BUY, TradeSide.COVER)
+    factor = Decimal(1) + costs.slippage_rate if pays_more else Decimal(1) - costs.slippage_rate
     rounding = ROUND_HALF_UP
     return (quote_price * factor).quantize(_PRICE_STEP, rounding=rounding)
 
@@ -125,8 +122,11 @@ def evaluate_order(
             held = valuation.position.quantity
     quantum = Decimal(1).scaleb(-policy.quantity_decimals)
 
+    side = request.side
     if request.close_position:
-        quantity = held
+        quantity = held if side is TradeSide.SELL else -held
+        if (side is TradeSide.SELL and held < 0) or (side is TradeSide.COVER and held > 0):
+            quantity = _ZERO
     elif request.quantity is not None:
         quantity = request.quantity.quantize(quantum, rounding=ROUND_DOWN)
     else:
@@ -137,7 +137,7 @@ def evaluate_order(
         message = (
             "There is no open position to close."
             if request.close_position
-            else "The order is too small to buy or sell any quantity at this price."
+            else "The order is too small to trade any quantity at this price."
         )
         code = (
             RejectionCode.INSUFFICIENT_POSITION
@@ -149,13 +149,24 @@ def evaluate_order(
     gross = (quantity * fill_price).quantize(_CENT, rounding=ROUND_HALF_UP)
     fee = commission_for(gross, costs)
     rejections: list[Rejection] = []
-    if request.side is TradeSide.BUY:
+    name = request.asset.display_symbol
+    if side is TradeSide.BUY:
+        if held < 0:
+            rejections.append(
+                Rejection(
+                    RejectionCode.WRONG_DIRECTION,
+                    f"{name} is a short position; use Cover to buy it back.",
+                )
+            )
         needed = gross + fee
-        if needed > snapshot.cash_balance:
+        if needed > snapshot.free_cash:
+            locked = snapshot.margin_required
+            suffix = f" ({locked:.2f} is held as collateral for shorts)" if locked > 0 else ""
             rejections.append(
                 Rejection(
                     RejectionCode.INSUFFICIENT_CASH,
-                    f"The order needs {needed:.2f} but only {snapshot.cash_balance:.2f} cash is available.",
+                    f"The order needs {needed:.2f} but only {snapshot.free_cash:.2f} cash is "
+                    f"available{suffix}.",
                 )
             )
         if strategy is not None:
@@ -172,13 +183,95 @@ def evaluate_order(
                     rejections.append(Rejection(RejectionCode.STRATEGY_CONSTRAINT, finding.message))
                 else:
                     warnings.append(finding.message)
-    elif quantity > held:
-        rejections.append(
-            Rejection(
-                RejectionCode.INSUFFICIENT_POSITION,
-                f"The order sells {quantity} but only {held} is held; short selling is not supported.",
+    elif side is TradeSide.SELL:
+        if held < 0:
+            rejections.append(
+                Rejection(
+                    RejectionCode.WRONG_DIRECTION,
+                    f"{name} is a short position; use Cover to buy it back.",
+                )
             )
+        elif quantity > held:
+            rejections.append(
+                Rejection(
+                    RejectionCode.INSUFFICIENT_POSITION,
+                    f"The order sells {quantity} but only {held} is held. To bet on a price fall "
+                    "use Short instead.",
+                )
+            )
+    elif side is TradeSide.SHORT:
+        if held > 0:
+            rejections.append(
+                Rejection(
+                    RejectionCode.WRONG_DIRECTION,
+                    f"{name} is held long; sell it first (a position cannot be long and short).",
+                )
+            )
+        if strategy is None:
+            rejections.append(
+                Rejection(
+                    RejectionCode.SHORT_NOT_ALLOWED,
+                    "Short selling needs an active strategy that sets a short exposure limit.",
+                )
+            )
+        else:
+            for finding in check_short(
+                snapshot,
+                request.asset,
+                trade_value=gross,
+                fee=fee,
+                strategy=strategy,
+                annualized_volatility=annualized_volatility,
+                portfolio_drawdown=portfolio_drawdown,
+            ):
+                if finding.severity == "hard":
+                    code = (
+                        RejectionCode.SHORT_NOT_ALLOWED
+                        if finding.code == "short_not_allowed"
+                        else RejectionCode.STRATEGY_CONSTRAINT
+                    )
+                    rejections.append(Rejection(code, finding.message))
+                else:
+                    warnings.append(finding.message)
+        # Collateral: proceeds stay locked and a further half of the short's value is required.
+        cash_after = snapshot.cash_balance + gross - fee
+        required = (snapshot.short_value + gross) * SHORT_MARGIN_RATE
+        if cash_after < required:
+            rejections.append(
+                Rejection(
+                    RejectionCode.INSUFFICIENT_MARGIN,
+                    f"Collateral for the shorts would need {required:.2f} in cash (150 % of their "
+                    f"value) but only {cash_after:.2f} would be available.",
+                )
+            )
+        warnings.append(
+            "Simulated short sale: borrow fees, dividends owed and share recalls are not modelled. "
+            "A short can lose more than the amount received."
         )
+    else:  # COVER
+        owed = -held if held < 0 else _ZERO
+        if held >= 0:
+            rejections.append(
+                Rejection(
+                    RejectionCode.INSUFFICIENT_POSITION,
+                    f"There is no short position in {name} to cover.",
+                )
+            )
+        elif quantity > owed:
+            rejections.append(
+                Rejection(
+                    RejectionCode.INSUFFICIENT_POSITION,
+                    f"The order covers {quantity} but only {owed} is short.",
+                )
+            )
+        if gross + fee > snapshot.cash_balance:
+            rejections.append(
+                Rejection(
+                    RejectionCode.INSUFFICIENT_CASH,
+                    f"Covering needs {gross + fee:.2f} but only {snapshot.cash_balance:.2f} "
+                    "cash is available.",
+                )
+            )
     if rejections:
         return _reject(request, *rejections)
 
@@ -192,7 +285,7 @@ def evaluate_order(
         occurred_at=now,
         currency=snapshot.base_currency,
     )
-    net = -(gross + fee) if request.side is TradeSide.BUY else gross - fee
+    net = gross - fee if request.side.opens_or_adds_cash else -(gross + fee)
     details = ExecutionDetails(
         quote_price=quote.price,
         execution_price=fill_price,

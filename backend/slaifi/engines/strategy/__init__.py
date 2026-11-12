@@ -6,6 +6,7 @@ from slaifi.engines.strategy.constraints import (
     PortfolioSuggestion,
     asset_eligibility,
     check_buy,
+    check_short,
     evaluate_alignment,
 )
 
@@ -15,5 +16,6 @@ __all__ = [
     "PortfolioSuggestion",
     "asset_eligibility",
     "check_buy",
+    "check_short",
     "evaluate_alignment",
 ]

@@ -51,10 +51,30 @@ def choose_action(
     holding: bool,
     eligibility_blocked: bool,
     purchase_blocked: bool,
+    short_holding: bool = False,
+    short_allowed: bool = False,
 ) -> tuple[RecommendationAction, str]:
-    """Return (action, short reason). Only BUY/HOLD/SELL/WATCH/AVOID/REDUCE/DCA are produced."""
+    """Return (action, short reason).
+
+    SHORT and COVER are produced only when the strategy permits short exposure
+    (``short_allowed``) or a short is already held (``short_holding``).
+    """
 
     th = thresholds_for(strategy)
+    if short_holding:
+        if eligibility_blocked:
+            return RecommendationAction.COVER, "The asset violates a hard strategy limit; cover."
+        if score >= th.buy:
+            return (
+                RecommendationAction.COVER,
+                "Signals have turned favourable; buy back the short before it loses more.",
+            )
+        if score > 0.10:  # mildly positive: the short thesis is weakening
+            return (
+                RecommendationAction.HOLD,
+                "Signals no longer support the short; watch closely and be ready to cover.",
+            )
+        return RecommendationAction.HOLD, "Signals still lean negative; the short is unchanged."
     if eligibility_blocked:
         if holding:
             return RecommendationAction.SELL, "The asset violates a hard strategy limit; exit."
@@ -71,6 +91,12 @@ def choose_action(
             return (
                 RecommendationAction.SELL,
                 "Signals are broadly negative and clear the sell threshold.",
+            )
+        if short_allowed:
+            return (
+                RecommendationAction.SHORT,
+                "Signals are broadly negative and the strategy allows short exposure. A short "
+                "can lose more than it gains, so size it within the short limit.",
             )
         return RecommendationAction.AVOID, "Signals are broadly negative; do not open a position."
     if score <= th.reduce:

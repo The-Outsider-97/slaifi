@@ -33,20 +33,48 @@ commission and slippage. Reports total/annualised return, volatility, drawdown, 
 **buy-and-hold benchmark**. Needs ≥ 252 bars. It is a historical simulation, not a forecast.
 
 ## Paper trading (`engines/paper`, `application/paper`)
-Buy/sell by quantity or value, fractional quantities (default 4 decimals), no shorting or leverage. Fill price =
+Buy/sell/short/cover by quantity or value, fractional quantities (default 4 decimals), no leverage on long positions. Fill price =
 latest quote ± slippage; commission from the strategy. Orders are refused for: stale/unavailable
 quotes, closed market (unless enabled), insufficient cash/holdings, hard-limit breaches, storage
 not healthy. Orders carry an idempotent `client_order_id`. The SQLite ledger is the single source
 of truth; every change is appended to a hash-chained audit log; `reconcile` replays the ledger
 and compares to stored valuations. Reset requires explicit confirmation and starts a new epoch.
 
+## Short selling (simulated)
+
+A short sells shares you do not own, hoping to buy them back cheaper. It is available **only** in
+paper trading, and **only** when the active strategy sets a *largest short exposure* above 0 — every
+preset except *Tactical long/short* keeps it at 0, so shorting is off unless you switch it on (raising the limit is a
+loosening and needs the usual acknowledgement).
+
+* **Signed positions.** A short has a negative quantity and a negative market value (a liability);
+  `total value = cash + net securities`. A position is either long or short, never both: *Sell*
+  closes only longs and *Cover* closes only shorts, otherwise the order is refused (`WRONG_DIRECTION`).
+* **Collateral.** The proceeds stay in the account but are locked, together with a further 50 %
+  (`SHORT_MARGIN_RATE = 1.5` × the shorts' current value). Buying and the cash reserve use *free
+  cash* = cash − collateral. A short that would leave free cash negative is refused
+  (`INSUFFICIENT_MARGIN`); one that would exceed the strategy's short limit is refused
+  (`SHORT_NOT_ALLOWED` when the limit is 0).
+* **Prices.** A short fills at the quote *minus* slippage (you sell), a cover at the quote *plus*
+  slippage (you buy). Realised profit on a cover = average net proceeds × quantity − (cost to buy
+  back + fee).
+* **Risk shown to the user.** The order ticket says plainly that a short can lose more than the
+  amount received. If the market moves against a short far enough to leave less cash than the
+  collateral, the portfolio shows a *margin shortfall* warning.
+* **Not modelled** (stated in the order warning): borrow fees, dividends owed on the borrowed shares,
+  share recalls, and forced liquidation. Results on shorts are therefore more favourable than a real
+  broker's would be.
+* **Recommendations** may say *Short* only when shorting is allowed, nothing is held, and the signals are broadly
+  negative; for an existing short they say *Cover* or *Hold*. The advisor understands
+  "short" and "cover".
+
 ## Strategies (`domain/strategies`, `engines/strategy`)
 A strategy is a set of numeric parameters (horizon, risk tolerance, max drawdown, max position
 weight, concentration HHI cap, cash reserve, volatility cap, prohibited/preferred asset classes,
 costs, income weight, …). Presets are starting values only. **Hard limits always take precedence
-over preferences and optimisation.** Ten presets are offered (short-term hawkish / care-bear / balanced,
+over preferences and optimisation.** Eleven presets are offered (short-term hawkish / care-bear / balanced,
 long-term hawkish / care-bear / growth, balanced core, dividend income, capital preservation, steady
-accumulation); each has a one-sentence description and every value stays editable, including how often you
+accumulation, tactical long/short); each has a one-sentence description and every value stays editable, including how often you
 trade, income focus, preferred asset classes and dividend reinvestment.
 
 ## Goals (`engines/goals/planning.py`)

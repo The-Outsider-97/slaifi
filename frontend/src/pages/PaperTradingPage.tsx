@@ -97,7 +97,20 @@ function Summary({ view }: { view: PortfolioView }) {
   const cards = [
     { label: "Total value", value: money(view.total_value, view.currency), detail: `As of ${dateTime(view.as_of)}` },
     { label: "Cash", value: money(view.cash_balance, view.currency), detail: view.cash_weight === null ? "—" : `${percent(view.cash_weight, 1)} of portfolio` },
-    { label: "Invested", value: money(view.invested_value, view.currency), detail: `${view.positions.length} position${view.positions.length === 1 ? "" : "s"}` },
+    {
+      label: "Invested (net)",
+      value: money(view.invested_value, view.currency),
+      detail: `${view.positions.length} position${view.positions.length === 1 ? "" : "s"}`,
+    },
+    ...(Number(view.short_value) > 0
+      ? [
+          {
+            label: "Short positions",
+            value: money(view.short_value, view.currency),
+            detail: `${money(view.margin_required, view.currency)} held as collateral · ${money(view.free_cash, view.currency)} free`,
+          },
+        ]
+      : []),
     {
       label: "Profit / loss",
       value: money(view.total_pnl, view.currency),
@@ -117,7 +130,7 @@ function Summary({ view }: { view: PortfolioView }) {
   );
 }
 
-function Positions({ view, onClose, closing }: { view: PortfolioView; onClose: (symbol: string) => void; closing: boolean }) {
+function Positions({ view, onClose, closing }: { view: PortfolioView; onClose: (symbol: string, direction: "long" | "short") => void; closing: boolean }) {
   return (
     <section className="panel portfolio-holdings" aria-labelledby="pos-title">
       <div className="panel-heading">
@@ -148,8 +161,11 @@ function Positions({ view, onClose, closing }: { view: PortfolioView; onClose: (
               <div className="watch-asset" role="cell">
                 <span className="ticker-badge">{p.asset.symbol[0]}</span>
                 <span>
-                  <strong>{p.asset.display_symbol}</strong>
-                  <small>Avg. {money(p.average_cost, view.currency)}</small>
+                  <strong>
+                    {p.asset.display_symbol}
+                    {p.direction === "short" ? <span className="side-badge side-badge--short" title="Sold short: gains when the price falls, loses when it rises">SHORT</span> : null}
+                  </strong>
+                  <small>{p.direction === "short" ? "Sold at avg." : "Avg."} {money(p.average_cost, view.currency)}</small>
                 </span>
               </div>
               <span role="cell">{quantity(p.quantity)}</span>
@@ -173,8 +189,8 @@ function Positions({ view, onClose, closing }: { view: PortfolioView; onClose: (
               <span role="cell">{percent(p.weight, 1)}</span>
               <span role="cell" className={`market-change market-change--${direction(p.unrealized_pnl)}`}>{money(p.unrealized_pnl, view.currency)}</span>
               <span role="cell">
-                <button type="button" className="secondary-button secondary-button--tight" disabled={closing} onClick={() => onClose(p.asset.symbol)} aria-label={`Close ${p.asset.symbol} position`}>
-                  Close
+                <button type="button" className="secondary-button secondary-button--tight" disabled={closing} onClick={() => onClose(p.asset.symbol, p.direction)} aria-label={`${p.direction === "short" ? "Cover" : "Close"} ${p.asset.symbol} position`}>
+                  {p.direction === "short" ? "Cover" : "Close"}
                 </button>
               </span>
             </div>
@@ -478,9 +494,9 @@ export function PaperTradingPage() {
     remember(id);
   };
 
-  const close = async (symbol: string) => {
+  const close = async (symbol: string, direction: "long" | "short") => {
     if (!selected) return;
-    const done = await closePosition.run(selected, { symbol, side: "sell", close_position: true });
+    const done = await closePosition.run(selected, { symbol, side: direction === "short" ? "cover" : "sell", close_position: true });
     if (done) refresh();
   };
 
@@ -537,8 +553,8 @@ export function PaperTradingPage() {
               <>
                 <Summary view={view.data} />
                 <div className="dashboard-grid dashboard-grid--primary">
-                  <Positions view={view.data} onClose={(s) => void close(s)} closing={closePosition.running} />
-                  <OrderTicket portfolio={view.data} onFilled={refresh} />
+                  <Positions view={view.data} onClose={(s, d) => void close(s, d)} closing={closePosition.running} />
+                  <OrderTicket key={view.data.portfolio.portfolio_id} portfolio={view.data} onFilled={refresh} />
                 </div>
                 <div className="dashboard-grid dashboard-grid--secondary">
                   <Performance id={view.data.portfolio.portfolio_id} refreshKey={version} />

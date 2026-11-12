@@ -1,9 +1,7 @@
 import type {
   MarketAnalysisRequest,
   MarketAnalysisResponse,
-  MarketHistory,
   MarketOverview,
-  MarketRange,
   PortfolioAnalysisResponse,
   SlaiRuntimeStatus,
 } from "../types/market";
@@ -12,13 +10,6 @@ import type {
 // talks to the local API directly. VITE_API_BASE_URL overrides both.
 const API_BASE_URL: string =
   import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ? "http://127.0.0.1:8000" : "");
-
-const RANGE_DAYS: Record<MarketRange, number> = {
-  "1W": 7,
-  "1M": 31,
-  "3M": 93,
-  "1Y": 366,
-};
 
 export function createRequestId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -107,22 +98,6 @@ async function apiRequestNullable<T>(path: string, init: RequestInit = {}): Prom
 
 export function fetchMarketOverview(signal?: AbortSignal): Promise<MarketOverview> {
   return apiRequest<MarketOverview>("/api/v1/market/overview", { signal });
-}
-
-export function fetchMarketHistory(
-  symbol: string,
-  assetClass: string,
-  range: MarketRange,
-  signal?: AbortSignal,
-): Promise<MarketHistory> {
-  const query = new URLSearchParams({
-    days: String(RANGE_DAYS[range]),
-    asset_class: assetClass,
-  });
-  return apiRequest<MarketHistory>(
-    `/api/v1/market/history/${encodeURIComponent(symbol)}?${query.toString()}`,
-    { signal },
-  );
 }
 
 export function fetchSlaiStatus(signal?: AbortSignal): Promise<SlaiRuntimeStatus> {

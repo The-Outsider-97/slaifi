@@ -45,7 +45,7 @@ from slaifi.engines.recommendation.signals import (
     readings_at,
 )
 from slaifi.engines.risk import maximum_drawdown
-from slaifi.engines.strategy import asset_eligibility, check_buy
+from slaifi.engines.strategy import asset_eligibility, check_buy, check_short
 from slaifi.engines.technical import assess_bars, normalize_bars
 
 RULES_MODEL = ModelVersion("slaifi_signal_rules", "1.0.0")
@@ -119,10 +119,12 @@ def build_report(inputs: RecommendationInputs) -> RecommendationReport:  # noqa:
     closes = [float(bar.close) for bar in bars]
     holding_qty = None
     holding = False
+    short_holding = False
     if inputs.snapshot is not None:
         for valuation in inputs.snapshot.positions:
-            if valuation.position.asset == asset and valuation.position.quantity > 0:
-                holding = True
+            if valuation.position.asset == asset and valuation.position.quantity != 0:
+                holding = valuation.position.quantity > 0
+                short_holding = valuation.position.quantity < 0
                 holding_qty = str(valuation.position.quantity)
 
     reasons: list[str] = []
@@ -201,12 +203,28 @@ def build_report(inputs: RecommendationInputs) -> RecommendationReport:  # noqa:
         f.severity == "hard" and f.code in ELIGIBILITY_CODES for f in findings
     )
     purchase_blocked = any(f.severity == "hard" for f in purchase_findings)
+    short_allowed = False
+    if inputs.snapshot is not None and not holding:
+        short_allowed = not any(
+            f.severity == "hard"
+            for f in check_short(
+                inputs.snapshot,
+                asset,
+                trade_value=Decimal("0"),
+                fee=Decimal("0"),
+                strategy=strategy,
+                annualized_volatility=vol,
+                portfolio_drawdown=inputs.portfolio_drawdown,
+            )
+        )
     action, reason = choose_action(
         score,
         strategy=strategy,
         holding=holding,
         eligibility_blocked=eligibility_blocked,
         purchase_blocked=purchase_blocked,
+        short_holding=short_holding,
+        short_allowed=short_allowed,
     )
 
     # --- supporting / conflicting ---------------------------------------------------------------
@@ -231,6 +249,7 @@ def build_report(inputs: RecommendationInputs) -> RecommendationReport:  # noqa:
             RecommendationAction.SELL,
             RecommendationAction.REDUCE,
             RecommendationAction.AVOID,
+            RecommendationAction.SHORT,
         }:
             invalidation.append(f"A daily close back above the 50-bar average ({slow:.2f}).")
         else:

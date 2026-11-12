@@ -1,6 +1,7 @@
 """Application service for the Market Overview dashboard."""
 
 import asyncio
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -8,11 +9,15 @@ from datetime import UTC, datetime
 from logs.logger import get_logger
 
 from slaifi.core.utils.errors import ValidationError
-from slaifi.domain.assets import AssetId
+from slaifi.domain.assets import AssetClass, AssetId
 from slaifi.domain.market import MarketGateway
 from slaifi.domain.market.models import AssetRef, PriceQuote
 
 logger = get_logger("SLAIFI Market Overview")
+
+# An instrument that no provider could classify is not searched for again on every page load:
+# free search quotas are small. The quote itself is unaffected; only its label is retried later.
+UNCLASSIFIED_RETRY_SECONDS = 300.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +61,7 @@ class GetMarketOverview:
         self._gateway = gateway
         self._assets = assets
         self._classify = classify
+        self._retry_at: dict[str, float] = {}
 
     async def _identified(self) -> tuple[AssetId, ...]:
         """Attach the asset class (ETF, index, stock…) found by instrument search.
@@ -69,10 +75,17 @@ class GetMarketOverview:
         classify = self._classify
 
         async def one(asset: AssetId) -> AssetId:
+            if self._retry_at.get(asset.symbol, 0.0) > time.monotonic():
+                return asset
             try:
                 found = await classify(asset.symbol)
             except Exception:  # noqa: BLE001 - classification is cosmetic; quotes must still work
+                self._retry_at[asset.symbol] = time.monotonic() + UNCLASSIFIED_RETRY_SECONDS
                 return asset
+            if found.asset_class is AssetClass.UNKNOWN:
+                self._retry_at[asset.symbol] = time.monotonic() + UNCLASSIFIED_RETRY_SECONDS
+            else:
+                self._retry_at.pop(asset.symbol, None)
             return AssetId(asset.symbol, found.asset_class)
 
         return tuple(await asyncio.gather(*(one(a) for a in self._assets)))

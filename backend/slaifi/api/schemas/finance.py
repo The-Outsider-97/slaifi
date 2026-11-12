@@ -37,7 +37,7 @@ class CashRequest(_Body):
 
 class OrderRequestBody(_Body):
     symbol: str = Field(min_length=1, max_length=32)
-    side: str = Field(pattern="^(buy|sell)$")
+    side: str = Field(pattern="^(buy|sell|short|cover)$")
     quantity: Decimal | None = Field(default=None, gt=0, max_digits=18, decimal_places=8)
     notional: Decimal | None = Field(default=None, gt=0, max_digits=18, decimal_places=2)
     close_position: bool = False

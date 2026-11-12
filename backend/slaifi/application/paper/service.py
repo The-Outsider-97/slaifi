@@ -294,7 +294,7 @@ class PaperTradingService:
         prices: dict[AssetId, Decimal] = {}
         basis: dict[AssetId, str] = {}
         for position in build_positions(ledger.trades):
-            if position.quantity <= 0:
+            if position.quantity == 0:
                 continue
             mark = marks.get(position.asset)
             if (
@@ -312,7 +312,7 @@ class PaperTradingService:
     async def view(self, portfolio_id: str, *, record: bool = True) -> PortfolioView:
         portfolio = self._require(portfolio_id)
         ledger = self._store.load_ledger(portfolio_id)
-        held = [p.asset for p in build_positions(ledger.trades) if p.quantity > 0]
+        held = [p.asset for p in build_positions(ledger.trades) if p.quantity != 0]
         marks, warnings = await self._marks(held)
         now = self._clock()
         snapshot, basis = self._valued(ledger, marks, now)
@@ -357,6 +357,12 @@ class PaperTradingService:
                     f"{p.valuation.position.asset.symbol} is valued at its last known price "
                     "(live data sources could not be reached)."
                 )
+        if snapshot.has_shorts and snapshot.cash_balance < snapshot.margin_required:
+            warnings.append(
+                f"Margin shortfall: cash {snapshot.cash_balance:.2f} is below the "
+                f"{snapshot.margin_required:.2f} held as collateral for short positions. In a "
+                "real account this would be a margin call; here nothing is closed automatically."
+            )
         if record:
             self._maybe_record_view(portfolio, snapshot, now)
         return PortfolioView(
@@ -539,13 +545,13 @@ class PaperTradingService:
             held = [
                 p.asset
                 for p in build_positions(ledger0.trades)
-                if p.quantity > 0 and p.asset != asset
+                if p.quantity != 0 and p.asset != asset
             ]
             marks, _ = await self._marks(held)
             strategy = self.strategy_for(portfolio)
             volatility = (
                 await self._volatility(asset)
-                if side is TradeSide.BUY and strategy.max_annualized_volatility
+                if side in (TradeSide.BUY, TradeSide.SHORT) and strategy.max_annualized_volatility
                 else None
             )
             now = self._clock()
@@ -733,12 +739,15 @@ class PaperTradingService:
         summary = summarize_performance(points)
         total = view.snapshot.total_value
         weights = (
-            [float(v.market_value / total) for v in view.snapshot.positions] if total > 0 else []
+            [float(abs(v.market_value) / total) for v in view.snapshot.positions]
+            if total > 0
+            else []
         )
         hhi = None
-        invested = view.snapshot.securities_market_value
+        # Gross exposure counts shorts as well as longs.
+        invested = sum((abs(v.market_value) for v in view.snapshot.positions), _ZERO)
         if invested > 0:
-            hhi = sum((float(v.market_value / invested)) ** 2 for v in view.snapshot.positions)
+            hhi = sum((float(abs(v.market_value) / invested)) ** 2 for v in view.snapshot.positions)
         notes = [
             summary.note,
             "Returns are in the portfolio's base currency; no FX conversion is applied.",
@@ -858,20 +867,29 @@ class PaperTradingService:
                             )
                         )
                     gross = t.quantity * t.unit_price
-                    if t.side is TradeSide.BUY:
+                    before = held.get(t.asset, _ZERO)
+                    if t.side in (TradeSide.BUY, TradeSide.COVER):
                         cash -= gross + t.fee
-                        held[t.asset] = held.get(t.asset, _ZERO) + t.quantity
+                        held[t.asset] = before + t.quantity
                     else:
                         cash += gross - t.fee
-                        held[t.asset] = held.get(t.asset, _ZERO) - t.quantity
-                        if held[t.asset] < 0:
-                            issues.append(
-                                ReconciliationIssue(
-                                    "error",
-                                    "negative_position",
-                                    f"{t.asset.display_symbol} went negative at trade {t.trade_id}",
-                                )
+                        held[t.asset] = before - t.quantity
+                    after = held[t.asset]
+                    # A long may not go below zero by selling, nor a short above zero by covering.
+                    crossed = (
+                        (t.side is TradeSide.SELL and after < 0)
+                        or (t.side is TradeSide.COVER and after > 0)
+                        or (t.side is TradeSide.SHORT and before > 0)
+                        or (t.side is TradeSide.BUY and before < 0)
+                    )
+                    if crossed:
+                        issues.append(
+                            ReconciliationIssue(
+                                "error",
+                                "negative_position",
+                                f"{t.asset.display_symbol} crossed zero at trade {t.trade_id}",
                             )
+                        )
                 if cash < Decimal("-0.005"):
                     issues.append(
                         ReconciliationIssue(

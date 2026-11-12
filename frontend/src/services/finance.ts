@@ -73,13 +73,14 @@ export const fetchQuote = (symbol: string, signal?: AbortSignal) =>
 
 export const fetchSeries = (
   symbol: string,
-  options: { interval: string; range: string; overlays?: string[] },
+  options: { interval: string; range?: string; days?: number; overlays?: string[] },
   signal?: AbortSignal,
 ) =>
   apiRequest<SeriesResponse>(
     `${V1}/market/series/${encodeURIComponent(symbol)}${qs({
       interval: options.interval,
-      range: options.range,
+      range: options.days === undefined ? options.range : undefined,
+      days: options.days,
       overlays: options.overlays?.join(","),
     })}`,
     { signal },
@@ -140,7 +141,7 @@ export const withdrawCash = (id: string, amount: string, note?: string) =>
 
 export type OrderBody = {
   symbol: string;
-  side: "buy" | "sell";
+  side: "buy" | "sell" | "short" | "cover";
   quantity?: string;
   notional?: string;
   close_position?: boolean;

@@ -101,7 +101,7 @@ function ActionBadge({ report }: { report: RecommendationReport }) {
   if (report.status !== "recommendation" || !report.action) {
     return <span className="status-badge status-badge--insufficient">INSUFFICIENT EVIDENCE</span>;
   }
-  const tone = report.action === "BUY" || report.action === "DCA" ? "dca" : report.action === "SELL" || report.action === "AVOID" || report.action === "REDUCE" ? "review-risk" : "hold";
+  const tone = report.action === "BUY" || report.action === "DCA" ? "dca" : report.action === "SELL" || report.action === "AVOID" || report.action === "REDUCE" || report.action === "SHORT" ? "review-risk" : "hold";
   return <span className={`status-badge status-badge--${tone}`}>{report.action}</span>;
 }
 

@@ -61,6 +61,19 @@ export function OutcomeDetails({ outcome, currency }: { outcome: OrderOutcome; c
   );
 }
 
+type Side = "buy" | "sell" | "short" | "cover";
+
+const SIDES: { value: Side; label: string; hint: string }[] = [
+  { value: "buy", label: "Buy", hint: "Buy shares to hold. You gain if the price rises." },
+  { value: "sell", label: "Sell", hint: "Sell shares you hold." },
+  {
+    value: "short",
+    label: "Short",
+    hint: "Sell borrowed shares, hoping to buy them back cheaper. You gain if the price falls and lose if it rises: a short can lose more than the amount you receive. The proceeds and a further 50 % stay locked as collateral. Needs a strategy with a short limit above 0.",
+  },
+  { value: "cover", label: "Cover", hint: "Buy back shares you are short to close or reduce the short." },
+];
+
 type Props = {
   portfolio: PortfolioView;
   initialSymbol?: string;
@@ -70,7 +83,7 @@ type Props = {
 /** Two steps on purpose: preview the exact simulated fill, then explicitly confirm it. */
 export function OrderTicket({ portfolio, initialSymbol = "", onFilled }: Props) {
   const [symbol, setSymbol] = useState(initialSymbol);
-  const [side, setSide] = useState<"buy" | "sell">("buy");
+  const [side, setSide] = useState<Side>("buy");
   const [mode, setMode] = useState<"quantity" | "notional">("quantity");
   const [amount, setAmount] = useState("");
   const [previewed, setPreviewed] = useState<OrderBody | null>(null);
@@ -141,10 +154,10 @@ export function OrderTicket({ portfolio, initialSymbol = "", onFilled }: Props) 
             <input value={symbol} onChange={(e) => { setSymbol(e.target.value); edit(); }} maxLength={24} placeholder="e.g. JNJ" required />
           </label>
           <fieldset className="segmented" aria-label="Side">
-            {(["buy", "sell"] as const).map((item) => (
-              <label key={item} className={side === item ? "segmented__item segmented__item--active" : "segmented__item"}>
-                <input type="radio" name="side" value={item} checked={side === item} onChange={() => { setSide(item); edit(); }} />
-                {item === "buy" ? "Buy" : "Sell"}
+            {SIDES.map((item) => (
+              <label key={item.value} className={side === item.value ? "segmented__item segmented__item--active" : "segmented__item"}>
+                <input type="radio" name="side" value={item.value} checked={side === item.value} onChange={() => { setSide(item.value); edit(); }} />
+                {item.label}
               </label>
             ))}
           </fieldset>
@@ -156,6 +169,9 @@ export function OrderTicket({ portfolio, initialSymbol = "", onFilled }: Props) 
               </label>
             ))}
           </fieldset>
+          <p className="order-risk-note" role="note" data-testid="side-hint">
+            {SIDES.find((item) => item.value === side)?.hint}
+          </p>
           <label className="field">
             <span>{mode === "quantity" ? "Quantity" : `Amount (${portfolio.currency})`}</span>
             <input
@@ -201,7 +217,7 @@ export function OrderTicket({ portfolio, initialSymbol = "", onFilled }: Props) 
       {previewed ? (
         <div className="confirm-bar" role="group" aria-label="Confirm simulated order">
           <span>
-            Place this <strong>simulated</strong> {previewed.side} of {previewed.symbol}? No real money is involved.
+            Place this <strong>simulated</strong> {previewed.side === "short" ? "short sale" : previewed.side === "cover" ? "cover (buy-back)" : previewed.side} of {previewed.symbol}? No real money is involved.
           </span>
           <div>
             <button type="button" className="secondary-button" onClick={edit}>Edit</button>

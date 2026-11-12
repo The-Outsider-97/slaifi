@@ -55,35 +55,69 @@ const nothingOverview = {
   unavailable: ["SPY", "QQQ"],
 };
 
-const history = {
-  symbol: "SPY",
-  asset_class: "etf",
+const asset = { symbol: "SPY", display_symbol: "SPY", asset_class: "etf", exchange: null, currency: "USD" };
+
+const seriesBars = [
+  {
+    start_at: "2026-10-03T00:00:00+00:00",
+    end_at: "2026-10-04T00:00:00+00:00",
+    open: "99.00",
+    high: "101.00",
+    low: "98.50",
+    close: "100.00",
+    volume: "1000",
+  },
+  {
+    start_at: "2026-10-04T00:00:00+00:00",
+    end_at: "2026-10-05T00:00:00+00:00",
+    open: "100.00",
+    high: "102.00",
+    low: "99.50",
+    close: "101.25",
+    volume: "1200",
+  },
+];
+
+const series = {
+  asset,
   interval: "1day",
-  generated_at: "2026-10-05T12:00:00+00:00",
-  data_mode: "retrieved",
-  source: "twelvedata",
-  last_known: false,
-  saved_at: null,
-  bars: [
-    {
-      start_at: "2026-10-03T00:00:00+00:00",
-      end_at: "2026-10-04T00:00:00+00:00",
-      open: "99.00",
-      high: "101.00",
-      low: "98.50",
-      close: "100.00",
-      volume: "1000",
-    },
-    {
-      start_at: "2026-10-04T00:00:00+00:00",
-      end_at: "2026-10-05T00:00:00+00:00",
-      open: "100.00",
-      high: "102.00",
-      low: "99.50",
-      close: "101.25",
-      volume: "1200",
-    },
-  ],
+  requested_days: 366,
+  bars: seriesBars,
+  overlays: {} as Record<string, (number | null)[]>,
+  quality: {
+    count: 2,
+    first_at: seriesBars[0]?.start_at ?? null,
+    last_at: seriesBars[1]?.start_at ?? null,
+    duplicates_removed: 0,
+    reordered: false,
+    gap_count: 0,
+    largest_gap_days: null,
+    complete: true,
+  },
+  notes: [] as string[],
+  provenance: {
+    mode: "retrieved",
+    available: true,
+    source: "twelvedata",
+    last_known: false,
+    saved_at: null,
+    delayed: null,
+    market_open: null,
+    observed_at: "2026-10-05T12:00:00+00:00",
+    retrieved_at: "2026-10-05T12:00:00+00:00",
+    age_seconds: 0,
+    attempts: [],
+    notes: [],
+  },
+};
+
+const emptyWatchlist = { items: [] as unknown[], provenance: series.provenance };
+
+const strategies = {
+  active_strategy_id: "S-1",
+  strategies: [{ strategy_id: "S-1", name: "Balanced", preferred_asset_classes: [] as string[] }],
+  presets: [] as unknown[],
+  note: "",
 };
 
 const unavailableStatus = {
@@ -156,6 +190,7 @@ function installFetch(options: {
   slai?: typeof unavailableStatus | typeof availableStatus;
   marketError?: boolean;
   historyError?: boolean;
+  watchlist?: typeof emptyWatchlist;
 } = {}) {
   const overview = options.overview ?? liveOverview;
   const slai = options.slai ?? unavailableStatus;
@@ -170,10 +205,16 @@ function installFetch(options: {
     if (url.endsWith("/api/v1/integrations/slai")) {
       return jsonResponse(slai);
     }
-    if (url.includes("/api/v1/market/history/SPY")) {
+    if (url.includes("/api/v1/market/series/")) {
       return options.historyError
         ? jsonResponse({ detail: "history unavailable" }, 503)
-        : jsonResponse(history);
+        : jsonResponse(series);
+    }
+    if (url.endsWith("/api/v1/market/watchlist")) {
+      return jsonResponse(options.watchlist ?? emptyWatchlist);
+    }
+    if (url.endsWith("/api/v1/strategies")) {
+      return jsonResponse(strategies);
     }
     if (url.endsWith("/api/v1/analysis/market")) {
       expect(init?.method).toBe("POST");
@@ -283,5 +324,61 @@ describe("MarketOverviewPage", () => {
     const theme = screen.getByRole("button", { name: "Toggle theme" });
     await user.click(theme);
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe("light"));
+  });
+
+  it("charts the first indicator up to the chosen range and re-requests when the user asks for 5 years", async () => {
+    const fetchMock = installFetch();
+    const user = userEvent.setup();
+    render(<MarketOverviewPage />);
+
+    expect(await screen.findByRole("heading", { name: "SPY" })).toBeInTheDocument();
+    const seriesCalls = () => fetchMock.mock.calls.map((call) => String(call[0])).filter((url) => url.includes("/market/series/SPY"));
+    await waitFor(() => expect(seriesCalls().some((url) => url.includes("days=366"))).toBe(true));
+
+    await user.click(screen.getByRole("button", { name: "5Y" }));
+
+    await waitFor(() => expect(seriesCalls().some((url) => url.includes("days=1830"))).toBe(true));
+    expect(screen.getByRole("button", { name: "5Y" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("remembers the chosen range in this browser and starts from it next time", async () => {
+    installFetch();
+    const user = userEvent.setup();
+    const first = render(<MarketOverviewPage />);
+    await user.click(await screen.findByRole("button", { name: "3M" }));
+    first.unmount();
+
+    installFetch();
+    render(<MarketOverviewPage />);
+    expect(await screen.findByRole("button", { name: "3M" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("says NOT AVAILABLE on the chart when there is no history, instead of drawing anything", async () => {
+    installFetch({ historyError: true });
+    render(<MarketOverviewPage />);
+
+    await waitFor(() => expect(screen.queryByTestId("market-chart-svg")).not.toBeInTheDocument());
+    expect((await screen.findAllByText(/NOT AVAILABLE/i)).length).toBeGreaterThan(0);
+  });
+
+  it("shows the user's own assets in Market watch, with NOT AVAILABLE for one that has no quote", async () => {
+    installFetch({
+      watchlist: {
+        items: [{ asset: { symbol: "KO", display_symbol: "NYSE:KO", asset_class: "stock", exchange: "NYSE", currency: "USD" }, name: "Coca-Cola", added_at: "2026-10-05T12:00:00+00:00", quote: null }],
+        provenance: series.provenance,
+      },
+    });
+    render(<MarketOverviewPage />);
+
+    expect(await screen.findByText("NYSE:KO")).toBeInTheDocument();
+    expect(screen.getByTestId("watch-unavailable")).toHaveTextContent("NOT AVAILABLE");
+    expect(screen.queryByTestId("watch-default-note")).not.toBeInTheDocument();
+  });
+
+  it("says plainly that the list is the default indicators until the user adds assets", async () => {
+    installFetch();
+    render(<MarketOverviewPage />);
+
+    expect(await screen.findByTestId("watch-default-note")).toHaveTextContent(/default market indicators/i);
   });
 });

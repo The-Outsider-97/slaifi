@@ -59,7 +59,7 @@ class GoalDraft:
 class OrderDraft:
     """A simulated order extracted from an instruction; never executed without confirmation."""
 
-    side: str  # buy | sell
+    side: str  # buy | sell | short | cover
     symbol: str
     quantity: str | None = None
     notional: str | None = None

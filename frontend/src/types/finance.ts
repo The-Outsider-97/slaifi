@@ -264,6 +264,8 @@ export type BacktestResponse = {
 };
 
 export type Strategy = {
+  /** Largest share of the portfolio that may be sold short; 0 keeps short selling off. */
+  max_short_exposure: number;
   strategy_id: string;
   name: string;
   preset: string | null;
@@ -309,6 +311,8 @@ export type PortfolioMeta = {
 export type PositionRow = {
   asset: Asset;
   quantity: string;
+  /** A short position has a negative quantity and a negative market value (a liability). */
+  direction: "long" | "short";
   average_cost: string;
   market_price: string | null;
   market_value: string | null;
@@ -325,7 +329,15 @@ export type PortfolioView = {
   as_of: string;
   currency: string;
   cash_balance: string;
+  /** Net market value of all positions (shorts count as negative). */
   invested_value: string;
+  /** Market value of the short positions (a positive amount owed). */
+  short_value: string;
+  /** Cash locked as collateral for shorts (150 % of their value). */
+  margin_required: string;
+  /** Cash that is not locked as collateral. */
+  free_cash: string;
+  short_exposure: number | null;
   total_value: string;
   cash_weight: number | null;
   net_contributions: string;

@@ -46,3 +46,31 @@ def test_missing_build_serves_no_ui_but_the_api_works(tmp_path: Path) -> None:
     with _client(tmp_path, tmp_path / "not-built") as client:
         assert client.get("/").status_code == 404
         assert client.get("/health").json() == {"status": "ok"}
+
+
+def test_hashed_files_are_cached_for_good_and_the_page_itself_is_always_rechecked(
+    tmp_path: Path,
+) -> None:
+    dist = _build_fake_dist(tmp_path)
+    (dist / "assets" / "index-Bq3x9KdA.js").write_text("console.log('hashed')", encoding="utf-8")
+    with _client(tmp_path, dist) as client:
+        hashed = client.get("/assets/index-Bq3x9KdA.js")
+        assert hashed.headers["cache-control"] == "private, max-age=31536000, immutable"
+        # A file whose name does not change with its content must never be kept for a year; it
+        # gets no caching rule of its own (the access middleware then answers ``no-store``).
+        for path in ("/assets/app.js", "/", "/some/client/route"):
+            assert "max-age" not in client.get(path).headers.get("cache-control", ""), path
+
+
+def test_large_replies_are_compressed_and_small_ones_are_left_alone(tmp_path: Path) -> None:
+    dist = _build_fake_dist(tmp_path)
+    (dist / "assets" / "big-Zk29fjQp.js").write_text("const a = 1;\n" * 2000, encoding="utf-8")
+    with _client(tmp_path, dist) as client:
+        big = client.get("/assets/big-Zk29fjQp.js", headers={"Accept-Encoding": "gzip"})
+        assert big.headers["content-encoding"] == "gzip"
+        assert int(big.headers["content-length"]) < 2000  # 26,000 bytes of text
+        assert big.text.startswith("const a = 1;")  # the client still reads the original
+        small = client.get("/health", headers={"Accept-Encoding": "gzip"})
+        assert "content-encoding" not in small.headers
+        plain = client.get("/assets/big-Zk29fjQp.js", headers={"Accept-Encoding": "identity"})
+        assert "content-encoding" not in plain.headers

@@ -108,3 +108,37 @@ def test_overview_attaches_the_asset_class_but_never_the_exchange() -> None:
     spy, bad = seen
     assert spy.asset_class is AssetClass.ETF and spy.exchange is None and spy.currency is None
     assert bad.asset_class is AssetClass.UNKNOWN  # classification failure never blocks quotes
+
+
+def test_an_instrument_that_cannot_be_classified_is_not_searched_again_on_every_load() -> None:
+    from slaifi.application.market import get_overview as module
+    from slaifi.domain.assets import AssetClass
+
+    calls: list[str] = []
+
+    async def classify(symbol: str) -> AssetId:
+        calls.append(symbol)
+        if symbol == "VIX":
+            return AssetId(symbol)  # searched, not identified
+        if symbol == "BAD":
+            raise RuntimeError("search down")
+        return AssetId(symbol, AssetClass.ETF)
+
+    service = GetMarketOverview(
+        StubGateway(),  # type: ignore[arg-type]
+        (AssetRef("SPY"), AssetRef("VIX"), AssetRef("BAD")),
+        classify=classify,
+    )
+    for _ in range(3):
+        overview = asyncio.run(service.execute())
+        assert len(overview.quotes) == 3  # quotes are never held back by classification
+
+    # Identified symbols are asked about every time (the market service caches them itself);
+    # the two unclassifiable ones are asked once, then left alone until the retry delay passes.
+    assert calls.count("VIX") == 1 and calls.count("BAD") == 1 and calls.count("SPY") == 3
+
+    for symbol in ("VIX", "BAD"):
+        service._retry_at[symbol] = 0.0  # noqa: SLF001 - the retry delay has passed
+    asyncio.run(service.execute())
+    assert calls.count("VIX") == 2 and calls.count("BAD") == 2
+    assert module.UNCLASSIFIED_RETRY_SECONDS > 0

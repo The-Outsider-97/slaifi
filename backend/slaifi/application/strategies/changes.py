@@ -26,6 +26,7 @@ HARD_LIMIT_FIELDS = frozenset(
     {
         "max_position_weight",
         "max_drawdown_rate",
+        "max_short_exposure",
         "cash_reserve_rate",
         "max_annualized_volatility",
         "max_concentration_hhi",
@@ -62,6 +63,7 @@ def current_value(strategy: StrategyProfile, field: str) -> Any:
         "capital": str(strategy.capital) if strategy.capital is not None else None,
         "max_position_weight": c.max_position_weight,
         "max_drawdown_rate": c.max_drawdown_rate,
+        "max_short_exposure": c.max_short_exposure,
         "cash_reserve_rate": strategy.cash_reserve_rate,
         "max_annualized_volatility": strategy.max_annualized_volatility,
         "max_concentration_hhi": strategy.max_concentration_hhi,
@@ -132,6 +134,9 @@ def _apply_changes(strategy: StrategyProfile, changes: Mapping[str, Any]) -> Str
             kwargs["capital"] = None if value in (None, "") else _dec(value, field)
         elif field in {"max_position_weight", "max_drawdown_rate"}:
             constraint_kwargs[field] = None if value is None else float(value)
+        elif field == "max_short_exposure":
+            # 0 (or empty) switches short selling off; the domain rejects values outside [0, 1].
+            constraint_kwargs[field] = 0.0 if value in (None, "") else float(value)
         elif field == "prohibited_asset_classes" or field == "allowed_asset_classes":
             constraint_kwargs[field] = _classes(value)
         elif field == "cash_reserve_rate":
@@ -178,6 +183,9 @@ def is_loosening(field: str, old: Any, new: Any) -> bool:
 
     if field not in HARD_LIMIT_FIELDS:
         return False
+    if field == "max_short_exposure":
+        # More short exposure is less restrictive; 0 means shorting is off.
+        return float(new or 0.0) > float(old or 0.0)
     if field in {
         "max_position_weight",
         "max_drawdown_rate",
@@ -203,6 +211,7 @@ def describe_change(field: str, old: Any, new: Any) -> str:
     labels = {
         "max_position_weight": "Maximum position size",
         "max_drawdown_rate": "Maximum drawdown",
+        "max_short_exposure": "Largest short exposure",
         "cash_reserve_rate": "Cash reserve",
         "max_annualized_volatility": "Volatility cap",
         "max_concentration_hhi": "Concentration (HHI) limit",
@@ -224,6 +233,7 @@ def describe_change(field: str, old: Any, new: Any) -> str:
     pct = {
         "max_position_weight",
         "max_drawdown_rate",
+        "max_short_exposure",
         "cash_reserve_rate",
         "max_annualized_volatility",
     }

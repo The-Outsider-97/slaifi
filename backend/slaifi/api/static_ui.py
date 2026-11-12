@@ -7,6 +7,7 @@ not a real file falls back to ``index.html``.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -15,15 +16,25 @@ from starlette.responses import Response
 from starlette.staticfiles import StaticFiles
 from starlette.types import Scope
 
+# Vite names built files ``name-<hash>.ext``: the name changes whenever the content does, so a
+# browser may keep such a file for good. Everything else (index.html above all) keeps the
+# server-wide ``no-store`` default, so a new build is picked up at once.
+_HASHED_ASSET = re.compile(r"^assets/.+-[A-Za-z0-9_-]{8,}\.[A-Za-z0-9]+$")
+IMMUTABLE_CACHE = "private, max-age=31536000, immutable"
+
 
 class _SinglePageApp(StaticFiles):
     async def get_response(self, path: str, scope: Scope) -> Response:
         try:
-            return await super().get_response(path, scope)
+            response = await super().get_response(path, scope)
         except HTTPException as exc:
             if exc.status_code != 404:
                 raise
-            return await super().get_response("index.html", scope)
+            path = "index.html"
+            response = await super().get_response(path, scope)
+        if _HASHED_ASSET.match(path.lstrip("/")):
+            response.headers["Cache-Control"] = IMMUTABLE_CACHE
+        return response
 
 
 def default_dist_dir() -> Path:

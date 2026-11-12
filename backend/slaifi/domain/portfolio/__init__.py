@@ -1,6 +1,7 @@
 """Portfolio domain vocabulary."""
 
 from slaifi.domain.portfolio.models import (
+    SHORT_MARGIN_RATE,
     CashFlow,
     CashFlowKind,
     Portfolio,
@@ -18,6 +19,7 @@ __all__ = [
     "PortfolioSnapshot",
     "Position",
     "PositionValuation",
+    "SHORT_MARGIN_RATE",
     "Trade",
     "TradeSide",
 ]

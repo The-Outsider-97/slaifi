@@ -29,6 +29,7 @@ const RISK = ["conservative", "moderate", "aggressive"];
 const PERCENT_FIELDS: { key: keyof Strategy; label: string; hard: boolean; help: string }[] = [
   { key: "max_position_weight", label: "Max single position", hard: true, help: "Largest share of the portfolio one holding may reach." },
   { key: "max_drawdown_rate", label: "Max drawdown", hard: true, help: "Portfolio loss from its peak that you will not accept." },
+  { key: "max_short_exposure", label: "Largest short exposure", hard: true, help: "Share of the portfolio that may be sold short. 0 keeps short selling off. A short can lose more than it gains." },
   { key: "cash_reserve_rate", label: "Cash reserve", hard: true, help: "Share kept in cash and never invested or withdrawn." },
   { key: "max_annualized_volatility", label: "Max volatility", hard: true, help: "Annualised volatility cap for a single instrument." },
 ];

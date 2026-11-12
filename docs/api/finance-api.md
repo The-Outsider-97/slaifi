@@ -23,7 +23,7 @@ priced from saved quotes and the oldest observation) and answers 503 `NOT AVAILA
 holding cannot be priced at all.
 
 **Market** — `GET market/search?q=` · `market/meta` · `market/quote/{symbol}` ·
-`market/series/{symbol}?interval=&range=&overlays=` · `market/stats/{symbol}` ·
+`market/series/{symbol}?interval=&range=|days=&overlays=` (`days` up to 3650; the UI asks for at most 1830, five years) · `market/stats/{symbol}` ·
 `market/compare?symbols=` · `market/history/{symbol}` · `market/overview` ·
 `POST market/screen` · `GET|POST market/watchlist` · `DELETE market/watchlist/{symbol}`
 
@@ -34,6 +34,13 @@ holding cannot be priced at all.
 `POST …/orders/preview` · `POST …/orders` · `POST …/deposit` · `POST …/withdraw` ·
 `GET …/history` · `GET …/performance` · `GET …/reconcile` · `GET …/guidance` ·
 `PUT …/strategy` · `POST …/reset` (needs `confirm`)
+
+**Orders** — `side` is `buy`, `sell`, `short` or `cover`. A short needs an active strategy with
+`max_short_exposure` > 0 (otherwise rejection `SHORT_NOT_ALLOWED`); other rejections added for shorting are
+`INSUFFICIENT_MARGIN` and `WRONG_DIRECTION` (selling a short or covering a long). Positions carry
+`direction` (`long`/`short`) and a signed `quantity` and `market_value`; the portfolio view adds
+`short_value`, `margin_required`, `free_cash` and `short_exposure`. Strategies expose and accept
+`max_short_exposure` (a fraction of the portfolio, 0 = shorting off).
 
 **Strategies / goals** — `GET|POST strategies` · `GET|PATCH|DELETE strategies/{id}` ·
 `POST strategies/{id}/activate` · `GET|POST goal-tracker` · `DELETE goal-tracker/{id}` ·
@@ -51,4 +58,6 @@ holding cannot be priced at all.
 
 Pre-existing stateless endpoints (`analysis/market`, `analysis/portfolio`, `goals/evaluate`,
 `portfolio/current`) are unchanged; see `financial-analysis.md`. Interactive docs: `/docs`.
+**Transport** — responses over 1 KB are gzip-compressed when the client accepts it; the built UI's hashed files
+(`assets/name-<hash>.ext`) are sent with `Cache-Control: private, max-age=31536000, immutable`, everything else `no-store`.
 Errors: `{ "error": code, "detail": message }` with 400/403/404/409/422/429/502/503 as appropriate.

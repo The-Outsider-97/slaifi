@@ -28,6 +28,7 @@ PRESET_IDS: tuple[str, ...] = (
     "dividend_income",
     "capital_preservation",
     "steady_accumulation",
+    "tactical_long_short",
 )
 
 # One plain sentence per preset: who it is for and what its limits do. Never a promise of results.
@@ -42,6 +43,10 @@ PRESET_DESCRIPTIONS: dict[str, str] = {
     "dividend_income": "Five years leaning on dividend and interest income; small positions.",
     "capital_preservation": "One year, very tight loss limit and large cash share. Protects first.",
     "steady_accumulation": "Ten years of patient, low-turnover buying with dividends reinvested.",
+    "tactical_long_short": (
+        "Four months. Buys strength and may short weakness (up to 25% of the portfolio) with a "
+        "large cash cushion as collateral. Shorts can lose more than they gain."
+    ),
 }
 
 
@@ -263,6 +268,27 @@ def _presets() -> dict[str, StrategyProfile]:
             costs=costs,
             reinvest_dividends=True,
             income_weight=0.1,
+        ),
+        "tactical_long_short": StrategyProfile(
+            strategy_id="tactical_long_short",
+            name="Tactical · Long/Short",
+            preset="tactical_long_short",
+            risk_tolerance=RiskTolerance.AGGRESSIVE,
+            horizon_days=120,
+            constraints=RiskConstraints(
+                max_drawdown_rate=0.12,
+                max_position_weight=0.10,
+                max_leverage=1.0,
+                max_short_exposure=0.25,
+                prohibited_asset_classes=frozenset({AssetClass.CRYPTO}),
+            ),
+            max_concentration_hhi=0.22,
+            cash_reserve_rate=0.20,
+            max_annualized_volatility=0.45,
+            trading_frequency=TradingFrequency.MEDIUM,
+            costs=costs,
+            reinvest_dividends=False,
+            income_weight=0.0,
         ),
     }
 

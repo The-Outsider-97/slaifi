@@ -10,6 +10,7 @@ from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from logs.logger import get_logger
 
 from slaifi import __version__
@@ -199,6 +200,8 @@ def create_app(
         description="SLAI Financial Intelligence application API",
         lifespan=lifespan,
     )
+    # JSON series and the UI bundle compress well; small replies are left alone.
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(runtime_settings.cors_origins),

@@ -27,6 +27,9 @@ class RejectionCode(StrEnum):
     CURRENCY_MISMATCH = "currency_mismatch"
     INSUFFICIENT_CASH = "insufficient_cash"
     INSUFFICIENT_POSITION = "insufficient_position"
+    INSUFFICIENT_MARGIN = "insufficient_margin"
+    SHORT_NOT_ALLOWED = "short_not_allowed"
+    WRONG_DIRECTION = "wrong_direction"
     QUANTITY_TOO_SMALL = "quantity_too_small"
     STRATEGY_CONSTRAINT = "strategy_constraint"
     DUPLICATE_ORDER = "duplicate_order"
@@ -77,8 +80,8 @@ class OrderRequest:
             raise DomainValidationError("quantity must be positive")
         if self.notional is not None and self.notional <= 0:
             raise DomainValidationError("notional must be positive")
-        if self.close_position and self.side is not TradeSide.SELL:
-            raise DomainValidationError("close_position is only valid for sell orders")
+        if self.close_position and self.side not in (TradeSide.SELL, TradeSide.COVER):
+            raise DomainValidationError("close_position is only valid for sell or cover orders")
 
 
 @dataclass(frozen=True, slots=True)

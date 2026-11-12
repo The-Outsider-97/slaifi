@@ -203,7 +203,7 @@ _ASSET_WORDS: dict[str, AssetClass] = {
     "equities": AssetClass.EQUITY,
 }
 _ORDER = re.compile(
-    r"\b(?P<side>buy|sell|purchase|short)\s+(?:(?P<qty>\d+(?:\.\d+)?)\s*(?:shares?|units?)?\s*(?:of\s+)?|"
+    r"\b(?P<side>buy|sell|purchase|short|cover)\s+(?:(?P<qty>\d+(?:\.\d+)?)\s*(?:shares?|units?)?\s*(?:of\s+)?|"
     r"(?:\$|usd\s*)(?P<amt>\d[\d,]*(?:\.\d+)?)(?P<k>k)?\s*(?:worth\s+)?(?:of\s+)?|(?P<all>all|everything)\s+(?:of\s+)?(?:my\s+)?)"
     r"(?P<sym>[A-Za-z]{1,5}(?:\.[A-Za-z])?)\b",
     re.I,
@@ -550,11 +550,8 @@ def parse_instruction(text: str, current: StrategyProfile) -> ParsedInstruction:
             "OF",
         }:
             continue
-        side = "sell" if om.group("side").lower() in {"sell", "short"} else "buy"
-        if om.group("side").lower() == "short":
-            warnings.append(
-                "Short selling is not supported; the request was treated as a sell of an existing position."
-            )
+        verb = om.group("side").lower()
+        side = {"sell": "sell", "short": "short", "cover": "cover"}.get(verb, "buy")
         quantity = notional = None
         close = False
         if om.group("qty"):
@@ -563,10 +560,11 @@ def parse_instruction(text: str, current: StrategyProfile) -> ParsedInstruction:
             amount = Decimal(om.group("amt").replace(",", "")) * (1000 if om.group("k") else 1)
             notional = str(amount)
         elif om.group("all"):
-            close = side == "sell"
+            close = side in {"sell", "cover"}
             if not close:
                 warnings.append(
-                    "'Buy all' is ambiguous and was ignored; specify a quantity or amount."
+                    f"'{side.capitalize()} all' is ambiguous and was ignored; specify a quantity "
+                    "or amount."
                 )
                 continue
         orders.append(OrderDraft(side, symbol, quantity, notional, close))

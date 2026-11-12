@@ -4,9 +4,7 @@ import {
 import {
   GoalsCard,
 } from "../components/GoalsCard";
-import {
-  MarketPerformanceChart,
-} from "../components/MarketPerformanceChart";
+import { MarketChart } from "../components/MarketChart";
 import {
   MarketSummaryCard,
   type SummaryMarket,
@@ -20,6 +18,34 @@ import {
 import {
   useMarketDashboard,
 } from "../hooks/useMarketDashboard";
+import { useAsync } from "../hooks/useAsync";
+import { useWatchlist } from "../hooks/useWatchlist";
+import { isChartRange, normalizeSymbols, type ChartRange } from "../lib/chartData";
+import { fetchStrategies } from "../services/finance";
+import type { MarketHistory } from "../types/market";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+const SELECTION_KEY = "slaifi.market.chart.v1";
+const DEFAULT_RANGE: ChartRange = "1Y";
+
+type Selection = { symbols: string[]; range: ChartRange };
+
+/** What the user last charted (kept only in this browser; every read and write is guarded). */
+function readSelection(): Selection {
+  try {
+    const raw = window.localStorage.getItem(SELECTION_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as { symbols?: unknown; range?: unknown };
+      return {
+        symbols: normalizeSymbols(Array.isArray(parsed.symbols) ? parsed.symbols : [], 3),
+        range: isChartRange(parsed.range) ? parsed.range : DEFAULT_RANGE,
+      };
+    }
+  } catch {
+    /* storage unavailable or unreadable: start from the defaults */
+  }
+  return { symbols: [], range: DEFAULT_RANGE };
+}
 
 const MARKET_NAMES:
   Record<string, string> = {
@@ -37,15 +63,46 @@ const MARKET_NAMES:
   };
 
 export function MarketOverviewPage() {
-  const dashboard =
-    useMarketDashboard();
+  const [selection, setSelection] = useState<Selection>(readSelection);
+  const [chartHistory, setChartHistory] = useState<MarketHistory | null>(null);
+  const dashboard = useMarketDashboard(chartHistory);
+  const watchlist = useWatchlist();
+  const strategies = useAsync((signal) => fetchStrategies(signal), "strategies");
 
-  const primarySymbol =
-    dashboard.overview?.quotes[0]
-      ?.symbol ?? null;
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SELECTION_KEY, JSON.stringify(selection));
+    } catch {
+      /* a private window or full storage: the choice simply is not remembered */
+    }
+  }, [selection]);
+
+  // The chart shows what the user chose; until they choose, the first market indicator.
+  const defaultSymbol = dashboard.overview?.quotes[0]?.symbol ?? null;
+  const chartSymbols = useMemo(
+    () => (selection.symbols.length > 0 ? selection.symbols : defaultSymbol ? [defaultSymbol] : []),
+    [selection.symbols, defaultSymbol],
+  );
+  const setSymbols = useCallback((symbols: string[]) => setSelection((s) => ({ ...s, symbols })), []);
+  const setRange = useCallback((range: ChartRange) => setSelection((s) => ({ ...s, range })), []);
+  const showOnChart = useCallback((symbol: string) => setSymbols([symbol]), [setSymbols]);
+
+  const suggestions = useMemo(() => {
+    const own = watchlist.items.map((item) => ({ symbol: item.asset.symbol, label: item.name ?? undefined }));
+    const indicators = (dashboard.overview?.quotes ?? []).map((q) => ({ symbol: q.symbol, label: undefined }));
+    const seen = new Set<string>();
+    return [...own, ...indicators].filter((i) => !seen.has(i.symbol) && seen.add(i.symbol));
+  }, [watchlist.items, dashboard.overview]);
+
+  const preferredClasses = useMemo(() => {
+    const active = strategies.data?.strategies.find((s) => s.strategy_id === strategies.data?.active_strategy_id);
+    return active?.preferred_asset_classes ?? [];
+  }, [strategies.data]);
+
+  const primarySymbol = chartHistory?.symbol ?? null;
 
   const primarySparkline =
-    dashboard.history?.bars.map(
+    chartHistory?.bars.map(
       (bar) => Number(bar.close),
     ) ?? [];
 
@@ -242,20 +299,14 @@ export function MarketOverviewPage() {
         ) : null}
 
         <div className="dashboard-grid dashboard-grid--primary">
-          <MarketPerformanceChart
-            history={
-              dashboard.history
-            }
-            range={dashboard.range}
-            onRangeChange={
-              dashboard.setRange
-            }
-            loading={
-              dashboard.historyLoading
-            }
-            error={
-              dashboard.historyError
-            }
+          <MarketChart
+            symbols={chartSymbols}
+            range={selection.range}
+            onSymbols={setSymbols}
+            onRange={setRange}
+            suggestions={suggestions}
+            onPrimaryHistory={setChartHistory}
+            waiting={dashboard.loading && selection.symbols.length === 0}
           />
 
           <SlaiInsightCard
@@ -280,7 +331,8 @@ export function MarketOverviewPage() {
 
         <div className="dashboard-grid dashboard-grid--secondary">
           <MarketWatchTable
-            quotes={
+            watchlist={watchlist}
+            indicators={
               dashboard.overview
                 ?.quotes ?? []
             }
@@ -288,9 +340,11 @@ export function MarketOverviewPage() {
               dashboard.overview
                 ?.unavailable ?? []
             }
+            preferredClasses={preferredClasses}
             loading={
               dashboard.loading
             }
+            onChart={showOnChart}
           />
 
           <GoalsCard />
