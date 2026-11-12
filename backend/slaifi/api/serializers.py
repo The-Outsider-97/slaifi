@@ -12,7 +12,14 @@ from decimal import Decimal
 from typing import Any
 
 from slaifi.application.advisor import AdvisorResult, ConfirmResult
-from slaifi.application.contracts import ReconciliationReport, SafetyReview
+from slaifi.application.contracts import (
+    AgentStatus,
+    KnowledgeAnswer,
+    LearningRecall,
+    LearningShare,
+    ReconciliationReport,
+    SafetyReview,
+)
 from slaifi.application.learning import AdaptationView, GoalReview, RefreshResult
 from slaifi.application.market import (
     ComparisonView,
@@ -909,3 +916,92 @@ def adaptation(v: AdaptationView) -> dict[str, Any]:
 
 def goal_review(v: GoalReview) -> dict[str, Any]:
     return {"report": goal_report(v.report), "explanation": explanation(v.explanation)}
+
+
+# ------------------------------------------------------------------------ optional SLAI agents
+def agent_status(a: AgentStatus) -> dict[str, Any]:
+    return {
+        "name": a.name,
+        "label": a.label,
+        "purpose": a.purpose,
+        "enabled": a.enabled,
+        "state": a.state,
+        "detail": a.detail,
+    }
+
+
+def knowledge_answer(a: KnowledgeAnswer) -> dict[str, Any]:
+    return {
+        "status": a.status,
+        "detail": a.detail,
+        "passages": [
+            {"source": p.source, "heading": p.heading, "text": p.text, "score": p.score}
+            for p in a.passages
+        ],
+    }
+
+
+def learning_share(r: LearningShare) -> dict[str, Any]:
+    return {
+        "status": r.status,
+        "sent": r.sent,
+        "duplicates": r.duplicates,
+        "refused": r.refused,
+        "detail": r.detail,
+    }
+
+
+def learning_recall(r: LearningRecall) -> dict[str, Any]:
+    return {
+        "status": r.status,
+        "total": r.total,
+        "detail": r.detail,
+        "by_action": [
+            {"action": a.action, "count": a.count, "mean_forward_return": a.mean_forward_return}
+            for a in r.by_action
+        ],
+    }
+
+
+def _allocation_stats(stats: Any) -> dict[str, Any] | None:
+    if stats is None:
+        return None
+    return {
+        "annual_volatility": stats.annual_volatility,
+        "historical_annual_return": stats.historical_annual_return,
+    }
+
+
+def allocation(a: Any) -> dict[str, Any]:
+    return {
+        "status": a.status,
+        "detail": a.detail,
+        "portfolio_id": a.portfolio_id,
+        "strategy_id": a.strategy_id,
+        "focus": a.focus,
+        "generated_at": t(a.generated_at) if a.generated_at else None,
+        "solver": a.solver,
+        "observations": a.observations,
+        "window_start": a.window_start.isoformat() if a.window_start else None,
+        "window_end": a.window_end.isoformat() if a.window_end else None,
+        "cash_weight": a.cash_weight,
+        "current": _allocation_stats(a.current),
+        "suggested": _allocation_stats(a.suggested),
+        "lines": [
+            {
+                "symbol": line.symbol,
+                "display": line.display,
+                "current_weight": line.current_weight,
+                "suggested_weight": line.suggested_weight,
+                "change": line.change,
+                "amount": d(line.amount) if line.amount is not None else None,
+            }
+            for line in a.lines
+        ],
+        "excluded": [{"symbol": sym, "reason": why} for sym, why in a.excluded],
+        "checks": [{"code": c.code, "ok": c.ok, "message": c.message} for c in a.checks],
+        "basis": (
+            "Historical statistics from real prices over the window shown. "
+            "They describe the past and are not a forecast."
+        ),
+    }

@@ -19,17 +19,24 @@ from slaifi.api.local_access import LocalAccessMiddleware
 from slaifi.api.router import api_router
 from slaifi.api.static_ui import mount_frontend
 from slaifi.application.advisor import AdvisorService
+from slaifi.application.agents import AgentSwitches
+from slaifi.application.allocation import AllocationService
 from slaifi.application.analysis import AnalyzeMarketSeries, AnalyzePortfolio
 from slaifi.application.contracts import (
+    AgentName,
+    AllocationProblem,
     FinanceStore,
     FinancialReasoner,
+    KnowledgeLibrary,
+    LearningMemory,
     NullSafetyReviewer,
+    PortfolioOptimizer,
     ReasoningStatus,
     ReasoningUnavailableError,
     SafetyReviewer,
 )
 from slaifi.application.goals import EvaluateFinancialGoal, GoalTracker
-from slaifi.application.learning import LearningService, RecommendationLog
+from slaifi.application.learning import LearningService, LearningSharing, RecommendationLog
 from slaifi.application.market import GetMarketHistory, GetMarketOverview, MarketDataService
 from slaifi.application.paper import PaperTradingService
 from slaifi.application.portfolio import PortfolioGuidanceService
@@ -41,7 +48,13 @@ from slaifi.domain.market.models import AssetRef
 from slaifi.domain.paper import ExecutionPolicy
 from slaifi.infrastructure.market_data import InMemoryMarketCache, build_gateway
 from slaifi.infrastructure.persistence import SqliteFinanceStore
-from slaifi.integrations.slai import SlaiFinancialReasoner, SlaiSafetyReviewer
+from slaifi.integrations.slai import (
+    SlaiFinancialReasoner,
+    SlaiKnowledgeLibrary,
+    SlaiLearningMemory,
+    SlaiPortfolioOptimizer,
+    SlaiSafetyReviewer,
+)
 
 logger = get_logger("SLAIFI Composition")
 
@@ -110,6 +123,9 @@ def create_app(
     slai_shared_memory: Any = None,
     finance_store: FinanceStore | None = None,
     safety_reviewer: SafetyReviewer | None = None,
+    knowledge_library: KnowledgeLibrary | None = None,
+    portfolio_optimizer: PortfolioOptimizer | None = None,
+    learning_memory: LearningMemory | None = None,
     access_token: str | None = None,
     security_headers: Mapping[str, str] | None = None,
 ) -> FastAPI:
@@ -264,6 +280,75 @@ def create_app(
     )
     guidance_service = PortfolioGuidanceService(
         paper_service, strategy_service, goal_tracker, recommendation_service, market_service
+    )
+    # Optional SLAI agents: off until switched on, never required, advice only.
+    switches = AgentSwitches(
+        store,
+        {
+            AgentName.KNOWLEDGE: runtime_settings.slai_knowledge_enabled,
+            AgentName.OPTIMIZATION: runtime_settings.slai_optimization_enabled,
+            AgentName.LEARNING: runtime_settings.slai_learning_enabled,
+        },
+        slai_enabled=runtime_settings.slai_enabled,
+    )
+    if isinstance(reasoner, SlaiFinancialReasoner):
+        agent_provider = reasoner.agent_for
+    else:
+
+        def agent_provider(name: str) -> Any:
+            raise RuntimeError("the SLAI agent runtime is not available")
+
+    library = knowledge_library or SlaiKnowledgeLibrary(
+        agent_provider,
+        Path(__file__).resolve().parents[2] / "docs",
+        enabled=lambda: switches.is_enabled(AgentName.KNOWLEDGE),
+        report=lambda ok, detail: switches.note_result(AgentName.KNOWLEDGE, ok, detail),
+        agent_type=runtime_settings.slai_knowledge_agent,
+    )
+    optimizer = portfolio_optimizer or SlaiPortfolioOptimizer(
+        agent_provider,
+        enabled=lambda: switches.is_enabled(AgentName.OPTIMIZATION),
+        report=lambda ok, detail: switches.note_result(AgentName.OPTIMIZATION, ok, detail),
+        agent_type=runtime_settings.slai_optimization_agent,
+    )
+
+    memory = learning_memory or SlaiLearningMemory(
+        agent_provider,
+        enabled=lambda: switches.is_enabled(AgentName.LEARNING),
+        report=lambda ok, detail: switches.note_result(AgentName.LEARNING, ok, detail),
+        agent_type=runtime_settings.slai_learning_agent,
+    )
+
+    def check_knowledge() -> None:
+        library.search("strategy")
+
+    def check_optimizer() -> None:
+        # A solver self-test on a fixed two-asset problem. It is never shown as market data; it
+        # only tells Settings whether the agent starts and solves.
+        optimizer.solve(
+            AllocationProblem(
+                ("A", "B"), (0.0, 0.0), ((0.04, 0.0), (0.0, 0.09)), (0.0, 0.0), (1.0, 1.0), 1.0
+            )
+        )
+
+    def check_learning() -> None:
+        memory.recall(1)  # starts the agent and reads; sends nothing
+
+    app.state.agent_checks = {
+        AgentName.KNOWLEDGE: check_knowledge,
+        AgentName.OPTIMIZATION: check_optimizer,
+        AgentName.LEARNING: check_learning,
+    }
+    app.state.learning_sharing = LearningSharing(store, memory)
+    app.state.agent_switches = switches
+    app.state.knowledge_library = library
+    app.state.allocation_service = AllocationService(
+        paper_service,
+        strategy_service,
+        market_service,
+        store,
+        optimizer,
+        enabled=lambda: switches.is_enabled(AgentName.OPTIMIZATION),
     )
     app.state.finance_store = store
     app.state.storage_status = storage_status

@@ -372,6 +372,16 @@ class SqliteFinanceStore:
             (_ACTIVE_STRATEGY_KEY, strategy_id),
         )
 
+    def get_setting(self, key: str) -> str | None:
+        value = self._db.scalar("SELECT value FROM settings WHERE key = ?", (key,))
+        return str(value) if value is not None else None
+
+    def set_setting(self, key: str, value: str) -> None:
+        self._db.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+
     def save_goal(self, goal: GoalSpec) -> None:
         self._db.execute(
             "INSERT INTO goals (goal_id, body) VALUES (?, ?) ON CONFLICT(goal_id) DO UPDATE SET body = excluded.body",

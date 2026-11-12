@@ -49,6 +49,13 @@ holding cannot be priced at all.
 **Learning** — `GET learning/track-record` · `POST learning/track-record/refresh` ·
 `GET strategies/{id}/adaptations?portfolio_id=&explain=` — see `docs/finance/learning-and-adaptation.md`
 
+
+**Optional SLAI agents** (all off until switched on; advice/records only) — `GET system/agents` ·
+`PUT system/agents/{name}` body `{"enabled": true|false}` (names `knowledge`, `optimization`, `learning`) ·
+`POST system/agents/{name}/check` · `GET knowledge/search?q=&limit=` (passages from SLAIFI's own docs) ·
+`GET paper/portfolios/{id}/allocation?symbols=&watchlist=&focus=steadiest|strategy` (status `ok`,
+`rejected`, `infeasible`, `insufficient_data`, `unavailable` or `disabled`; weights are historical-statistics based and re-checked by SLAIFI) ·
+`GET learning/slai-memory` · `POST learning/slai-memory/share`. Every answer states `disabled`/`unavailable` rather than inventing a result.
 **Errors** — a rejected request body returns 422 `{"error":"validation_error","detail":"Starting capital must be a plain number such as 5000 …","fields":[{"field","label","message"}]}`: the field is named and the sentence says what to type.
 
 **Advisor** — `POST advisor/interpret` · `POST advisor/proposals/{id}/confirm|reject`

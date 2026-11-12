@@ -291,3 +291,11 @@ input[type="checkbox"], input[type="radio"] { width: 16px; min-height: 16px; acc
   .symbol-picker { max-width: none; }
 }
 .chart-wrap--busy { opacity: .55; transition: opacity .15s; }
+
+/* optional SLAI agents */
+.agent-list, .check-list, .knowledge-results { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.agent-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); }
+.agent-row__text { display: grid; gap: 3px; min-width: 0; flex: 1 1 260px; }
+.agent-row__actions { display: flex; align-items: center; gap: 12px; }
+.knowledge-results li { display: grid; gap: 3px; padding: 10px 0; border-top: 1px solid var(--border); }
+.knowledge-results p { margin: 4px 0 0; white-space: pre-line; overflow-wrap: anywhere; }

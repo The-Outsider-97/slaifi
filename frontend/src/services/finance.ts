@@ -1,6 +1,12 @@
 import { apiRequest } from "./api";
 import type {
   AdaptationResponse,
+  AgentsResponse,
+  AgentStatus,
+  AllocationSuggestion,
+  KnowledgeAnswer,
+  LearningRecall,
+  LearningShare,
   AdvisorResponse,
   AuditEntry,
   BacktestResponse,
@@ -233,3 +239,27 @@ export const fetchAudit = (limit = 50, signal?: AbortSignal) =>
   apiRequest<{ entries: AuditEntry[] }>(`${V1}/system/audit${qs({ limit })}`, { signal });
 export const reconcileAll = (signal?: AbortSignal) => apiRequest<Reconciliation>(`${V1}/system/reconcile`, { signal });
 export const backupNow = () => mutate<{ backup: string }>("POST", `${V1}/system/backup`);
+
+// ------------------------------------------------------------------ optional SLAI agents
+export const fetchAgents = (signal?: AbortSignal) => apiRequest<AgentsResponse>(`${V1}/system/agents`, { signal });
+export const setAgentEnabled = (name: string, enabled: boolean) =>
+  mutate<AgentStatus>("PUT", `${V1}/system/agents/${encodeURIComponent(name)}`, { enabled });
+export const checkAgent = (name: string) =>
+  mutate<AgentStatus>("POST", `${V1}/system/agents/${encodeURIComponent(name)}/check`);
+export const searchKnowledge = (q: string, signal?: AbortSignal) =>
+  apiRequest<KnowledgeAnswer>(`${V1}/knowledge/search${qs({ q, limit: 5 })}`, { signal });
+export const fetchAllocation = (
+  id: string,
+  options: { symbols?: string; watchlist?: boolean; focus?: string },
+  signal?: AbortSignal,
+) =>
+  apiRequest<AllocationSuggestion>(
+    `${V1}/paper/portfolios/${encodeURIComponent(id)}/allocation${qs({
+      symbols: options.symbols,
+      watchlist: options.watchlist ? "true" : undefined,
+      focus: options.focus,
+    })}`,
+    { signal },
+  );
+export const fetchLearningMemory = (signal?: AbortSignal) => apiRequest<LearningRecall>(`${V1}/learning/slai-memory`, { signal });
+export const shareWithSlai = () => mutate<LearningShare>("POST", `${V1}/learning/slai-memory/share`);

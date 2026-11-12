@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { AppShell } from "../components/AppShell";
+import { SuggestedAllocation } from "../components/finance/AgentPanels";
 import { Explained } from "../components/finance/Explained";
 import { FreshnessBadge } from "../components/finance/FreshnessBadge";
 import { Empty, Loading, Notice, Simulated } from "../components/finance/Notice";
@@ -564,6 +565,7 @@ export function PaperTradingPage() {
                   <Guidance id={view.data.portfolio.portfolio_id} refreshKey={version} />
                   <History id={view.data.portfolio.portfolio_id} refreshKey={version} />
                 </div>
+                <SuggestedAllocation key={`${view.data.portfolio.portfolio_id}:${version}`} id={view.data.portfolio.portfolio_id} currency={view.data.currency} />
                 <Maintenance view={view.data} onChanged={refresh} />
               </>
             ) : null}

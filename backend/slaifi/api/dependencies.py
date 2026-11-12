@@ -71,8 +71,11 @@ def get_request_id(
 # ---------------------------------------------------------------------------------------------
 # Finance services (paper trading, strategies, goals, recommendations, advisor)
 from slaifi.application.advisor import AdvisorService  # noqa: E402
-from slaifi.application.contracts import FinanceStore  # noqa: E402
+from slaifi.application.agents import AgentSwitches  # noqa: E402
+from slaifi.application.allocation import AllocationService  # noqa: E402
+from slaifi.application.contracts import FinanceStore, KnowledgeLibrary  # noqa: E402
 from slaifi.application.goals import GoalTracker  # noqa: E402
+from slaifi.application.learning import LearningSharing  # noqa: E402
 from slaifi.application.market import MarketDataService  # noqa: E402
 from slaifi.application.paper import PaperTradingService  # noqa: E402
 from slaifi.application.portfolio import PortfolioGuidanceService  # noqa: E402
@@ -114,3 +117,19 @@ def get_advisor_service(request: Request) -> AdvisorService:
 
 def get_learning_service(request: Request) -> LearningService:
     return cast(LearningService, _state_value(request, "learning_service"))
+
+
+def get_agent_switches(request: Request) -> AgentSwitches:
+    return cast(AgentSwitches, _state_value(request, "agent_switches"))
+
+
+def get_knowledge_library(request: Request) -> KnowledgeLibrary:
+    return cast(KnowledgeLibrary, _state_value(request, "knowledge_library"))
+
+
+def get_learning_sharing(request: Request) -> LearningSharing:
+    return cast(LearningSharing, _state_value(request, "learning_sharing"))
+
+
+def get_allocation_service(request: Request) -> AllocationService:
+    return cast(AllocationService, _state_value(request, "allocation_service"))
