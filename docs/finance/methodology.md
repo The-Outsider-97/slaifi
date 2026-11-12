@@ -68,6 +68,24 @@ loosening and needs the usual acknowledgement).
   negative; for an existing short they say *Cover* or *Hold*. The advisor understands
   "short" and "cover".
 
+
+## Optional: suggested allocation and knowledge look-up (`engines/allocation`, `application/allocation`)
+
+Both need an SLAI agent the person has switched on; both are advice only.
+
+**Suggested allocation.** From the portfolio's long holdings (plus optional extra symbols or the watchlist)
+SLAIFI keeps the assets the strategy allows (the same eligibility rules as orders), with real, non-last-known
+daily history of at least 61 closes, and aligns their daily returns (at least 60 shared observations, at most 20 assets, about 420 days).
+It annualises mean and covariance (252 periods) and asks SLAI's optimizer to minimise `w'Σw − λ·μ'w` subject to
+`Σw = 1 − cash reserve` and `0 ≤ w ≤ max position weight`. `λ` is 0 for "steadiest" and 0 / 1 / 3 for a
+conservative / moderate / aggressive strategy under "balance risk and return" (product defaults). The result is
+accepted only if SLAIFI's own checks pass: finite numbers, each weight within bounds, the budget, the strategy's
+volatility cap and (with at least 3 holdings) the concentration limit. These are **historical** statistics: they say
+how the mix would have behaved, not how it will behave. If the position cap times the number of assets is below the
+budget the problem is reported as infeasible with how many assets would be needed.
+
+**Knowledge look-up.** Retrieval over SLAIFI's own markdown guides, chunked by heading. It returns the passage and
+its source; it does not generate an answer and it never reads portfolios, orders or the web.
 ## Strategies (`domain/strategies`, `engines/strategy`)
 A strategy is a set of numeric parameters (horizon, risk tolerance, max drawdown, max position
 weight, concentration HHI cap, cash reserve, volatility cap, prohibited/preferred asset classes,

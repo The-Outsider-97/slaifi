@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 
 import { AppShell } from "../components/AppShell";
 import { Explained } from "../components/finance/Explained";
+import { LearningMemoryPanel } from "../components/finance/AgentPanels";
 import { StrategySuggestions, TrackRecordPanel } from "../components/finance/LearningPanels";
 import { Empty, Loading, Notice } from "../components/finance/Notice";
 import { PageHeading } from "../components/finance/PageHeading";
@@ -693,6 +694,7 @@ export function StrategiesGoalsPage() {
         </div>
         <div className="dashboard-grid dashboard-grid--secondary">
           <TrackRecordPanel />
+          <LearningMemoryPanel />
         </div>
       </main>
     </AppShell>

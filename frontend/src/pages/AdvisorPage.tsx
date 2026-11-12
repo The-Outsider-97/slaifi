@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 
 import { AppShell } from "../components/AppShell";
+import { KnowledgeLookup } from "../components/finance/AgentPanels";
 import { Explained } from "../components/finance/Explained";
 import { Loading, Notice } from "../components/finance/Notice";
 import { OutcomeDetails } from "../components/finance/OrderTicket";
@@ -284,6 +285,7 @@ export function AdvisorPage() {
         </section>
 
         {result ? <Result result={result} portfolioId={portfolioId || null} onDone={reset} /> : null}
+        <KnowledgeLookup />
       </main>
     </AppShell>
   );

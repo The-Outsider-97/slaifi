@@ -685,3 +685,65 @@ export type AdaptationResponse = {
 };
 
 export type GoalReview = { report: GoalReport; explanation: Explanation };
+
+// ------------------------------------------------------------------ optional SLAI agents
+/** disabled: switched off (the default) · untested: on but not yet used · ready · unavailable: on, but SLAI could not run it. */
+export type AgentState = "disabled" | "untested" | "ready" | "unavailable" | string;
+
+export type AgentStatus = {
+  name: "knowledge" | "optimization" | "learning" | string;
+  label: string;
+  purpose: string;
+  enabled: boolean;
+  state: AgentState;
+  detail: string | null;
+};
+
+export type AgentsResponse = { agents: AgentStatus[]; note: string };
+
+export type KnowledgePassage = { source: string; heading: string | null; text: string; score: number };
+
+/** status: ok · no_match · unavailable · disabled. */
+export type KnowledgeAnswer = { status: string; detail: string | null; passages: KnowledgePassage[] };
+
+export type AllocationLine = {
+  symbol: string;
+  display: string;
+  current_weight: number;
+  suggested_weight: number;
+  change: number;
+  amount: string | null;
+};
+
+export type AllocationStats = { annual_volatility: number | null; historical_annual_return: number | null };
+
+export type AllocationCheck = { code: string; ok: boolean; message: string };
+
+/** status: ok · rejected (SLAIFI refused the proposal) · infeasible · insufficient_data · unavailable · disabled. */
+export type AllocationSuggestion = {
+  status: string;
+  detail: string | null;
+  portfolio_id: string;
+  strategy_id: string | null;
+  focus: string;
+  generated_at: string | null;
+  solver: string | null;
+  observations: number;
+  window_start: string | null;
+  window_end: string | null;
+  cash_weight: number | null;
+  current: AllocationStats | null;
+  suggested: AllocationStats | null;
+  lines: AllocationLine[];
+  excluded: { symbol: string; reason: string }[];
+  checks: AllocationCheck[];
+  basis: string;
+};
+
+/** status: ok · nothing_to_share · disabled · unavailable. */
+export type LearningShare = { status: string; sent: number; duplicates: number; refused: number; detail: string | null };
+
+export type LearningActionSummary = { action: string; count: number; mean_forward_return: number | null };
+
+/** status: ok · empty · disabled · unavailable. */
+export type LearningRecall = { status: string; total: number; detail: string | null; by_action: LearningActionSummary[] };

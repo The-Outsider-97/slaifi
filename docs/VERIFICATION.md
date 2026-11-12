@@ -49,6 +49,10 @@ with confirmation → rejected order → reconcile → reset with confirmation.
 7. **SLAI-backed goal review, adaptation review and the track-record context** were exercised with test doubles only (same limitation as item 3). The track record has been verified only against the synthetic feed and the local stand-in server; no real recommendation has yet aged 28 days against live prices, so expect "too early to say" for the first weeks of use.
 8. **Learning is rule-based measurement, not a trained model.** Suggestion thresholds (80 % of the drawdown limit, ×0.75 position cap, +5 % reserve, 20-result minimum) are product defaults, not tuned on data.
 
+9. **The optional agents (Knowledge, Optimization, Learning) were tested against test doubles on the SLAI side.** One part was checked against SLAI's real code: the Optimization problem formulation (objective, bounds, budget, sign convention) was run through the real `OptimizationSolver` on a small problem in the sandbox and the weights were verified by hand. The real `KnowledgeAgent` and `LearningAgent` were **not** run (the sandbox host has no `src.agents`), so their `add_document`/`retrieve` and `observe`/`query` call shapes were written from reading the agents' source and are unconfirmed at run time. In the browser the three features were exercised end to end with the real SLAI runtime absent, which shows the NOT AVAILABLE paths; the success paths are covered by API/unit tests with doubles.
+10. **Dependencies on your machine are unknown:** Optimization needs SciPy in SLAI's quadratic solver; Learning needs PyTorch (the Learning agent imports it at load). Without them Settings shows *On, but SLAI could not run it* and the feature says NOT AVAILABLE. Use Settings → **Check** after switching an agent on.
+11. **Allocation inputs are historical**, annualised from real daily returns, and the "steadiest / balance risk and return" preference weights (0, 0.0 / 1.0 / 3.0 by risk tolerance) are product defaults, not tuned.
+
 ## Known behaviour worth knowing
 
 * Last-known (saved) history always yields "insufficient evidence", and last-known quotes are never used to fill orders — by design.

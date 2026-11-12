@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from slaifi.api.routes.advisor import router as advisor_router
+from slaifi.api.routes.agents import router as agents_router
 from slaifi.api.routes.analysis import router as analysis_router
 from slaifi.api.routes.finance_market import router as finance_market_router
 from slaifi.api.routes.goals import router as goals_router
@@ -31,3 +32,4 @@ api_router.include_router(strategies_router)
 api_router.include_router(learning_router)
 api_router.include_router(advisor_router)
 api_router.include_router(system_router)
+api_router.include_router(agents_router)

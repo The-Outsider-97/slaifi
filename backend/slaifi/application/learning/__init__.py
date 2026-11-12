@@ -7,5 +7,13 @@ from slaifi.application.learning.service import (
     LearningService,
     RefreshResult,
 )
+from slaifi.application.learning.sharing import LearningSharing
 
-__all__ = ["AdaptationView", "GoalReview", "LearningService", "RecommendationLog", "RefreshResult"]
+__all__ = [
+    "AdaptationView",
+    "GoalReview",
+    "LearningService",
+    "LearningSharing",
+    "RecommendationLog",
+    "RefreshResult",
+]

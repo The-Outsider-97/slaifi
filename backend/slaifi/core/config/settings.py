@@ -80,6 +80,16 @@ class Settings(BaseSettings):
     slai_quality_refinement_enabled: bool = True
     slai_memory_ttl_seconds: int = Field(default=900, ge=1, le=86_400)
 
+    # Optional SLAI agents. Each is OFF until the person switches it on (Settings → SLAI agents, or
+    # these variables for the first start); none is ever required, and each degrades to
+    # "not available" without affecting the deterministic finance.
+    slai_knowledge_enabled: bool = False
+    slai_knowledge_agent: str = "knowledge"
+    slai_optimization_enabled: bool = False
+    slai_optimization_agent: str = "optimization"
+    slai_learning_enabled: bool = False
+    slai_learning_agent: str = "learning"
+
     @model_validator(mode="after")
     def validate_runtime_contract(self) -> "Settings":
         unknown = [n for n in self.provider_order if n not in KNOWN_PROVIDERS]

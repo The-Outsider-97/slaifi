@@ -1,4 +1,5 @@
 import { AppShell } from "../components/AppShell";
+import { AgentSwitchesCard } from "../components/finance/AgentPanels";
 import { Loading, Notice } from "../components/finance/Notice";
 import { PageHeading } from "../components/finance/PageHeading";
 import { useAction, useAsync } from "../hooks/useAsync";
@@ -124,6 +125,8 @@ export function SettingsPage() {
             </p>
           </section>
         </div>
+
+        <AgentSwitchesCard />
 
         <section className="panel analysis-panel" aria-labelledby="sources-title" data-testid="market-sources">
           <div className="panel-heading">

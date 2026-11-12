@@ -1,5 +1,21 @@
 """Application-owned ports implemented by integrations and infrastructure."""
 
+from slaifi.application.contracts.agents import (
+    AGENT_INFO,
+    AgentName,
+    AgentStatus,
+    AllocationProblem,
+    AllocationSolution,
+    KnowledgeAnswer,
+    KnowledgeLibrary,
+    KnowledgePassage,
+    LearningActionSummary,
+    LearningMemory,
+    LearningOutcome,
+    LearningRecall,
+    LearningShare,
+    PortfolioOptimizer,
+)
 from slaifi.application.contracts.persistence import (
     FinanceStore,
     QuoteSource,
@@ -25,10 +41,24 @@ from slaifi.domain.ledger import (
 )
 
 __all__ = [
+    "AGENT_INFO",
+    "AgentName",
+    "AgentStatus",
+    "AllocationProblem",
+    "AllocationSolution",
     "AuditEntry",
     "FinanceStore",
     "FinancialReasoner",
+    "KnowledgeAnswer",
+    "KnowledgeLibrary",
+    "KnowledgePassage",
+    "LearningShare",
+    "LearningRecall",
+    "LearningOutcome",
+    "LearningMemory",
+    "LearningActionSummary",
     "NullSafetyReviewer",
+    "PortfolioOptimizer",
     "Proposal",
     "QuoteSource",
     "ReasoningRequest",

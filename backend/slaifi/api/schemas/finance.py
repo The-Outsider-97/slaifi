@@ -100,3 +100,7 @@ class AdvisorRequest(_Body):
 class AdvisorConfirm(_Body):
     acknowledge_limit_changes: bool = False
     acknowledge_contradictions: bool = False
+
+
+class AgentSwitch(_Body):
+    enabled: bool

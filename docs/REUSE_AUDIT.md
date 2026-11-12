@@ -65,3 +65,16 @@ deterministic engines never import them.
   `HttpMarketProvider` base, combined by `MultiSourceGateway` (failover, cooldown, free-tier
   budgets, last-known cache). SLAI offers no market-data provider, so nothing was duplicated.
 * Test doubles (`tests/support`) are not part of the shipped package.
+
+## Optional SLAI agents (Knowledge, Optimization, Learning)
+
+| Need | SLAI component reused | Where |
+| --- | --- | --- |
+| Look up SLAIFI's own guides | `KnowledgeAgent` (`add_document` / `retrieve`) | `integrations/slai/knowledge.py` — no search index written in SLAIFI |
+| Portfolio weights under limits | `OptimizationAgent` / `QuadraticSolver` | `integrations/slai/optimizer.py` — SLAIFI builds the problem and re-checks the answer, it does not implement a solver |
+| Keep measured outcomes in SLAI's learning memory | `LearningAgent` modes `observe` / `query` (`LearningSignal` contract) | `integrations/slai/learning.py` |
+| Agent runtime | the same factory/shared memory as reasoning (`SlaiFinancialReasoner.agent_for`) | `main.py` |
+
+Not duplicated: no second vector index, solver or learning memory. SLAIFI's own rule-based learning (track
+record and adaptation suggestions) stays where it is; the Learning agent is only a second consumer of the
+same measured outcomes.
