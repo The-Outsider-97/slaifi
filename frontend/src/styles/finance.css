@@ -107,8 +107,12 @@ input[type="checkbox"], input[type="radio"] { width: 16px; min-height: 16px; acc
 .freshness--live .freshness__dot { background: var(--positive); }
 .freshness--delayed { color: var(--warning); border-color: rgba(217,184,77,.4); }
 .freshness--delayed .freshness__dot { background: var(--warning); }
-.freshness--mock { color: var(--accent); border-color: rgba(225,200,56,.45); background: var(--accent-soft); }
-.freshness--mock .freshness__dot { background: var(--accent); }
+.freshness--retrieved { color: var(--text-secondary); }
+.freshness--last-known { color: var(--accent); border-color: rgba(225,200,56,.45); background: var(--accent-soft); }
+.freshness--last-known .freshness__dot { background: var(--accent); }
+.freshness--unavailable { color: var(--negative); border-color: rgba(224,108,117,.45); }
+.freshness--unavailable .freshness__dot { background: var(--negative); }
+.not-available { color: var(--negative); font: 700 11px var(--font-sans); letter-spacing: .08em; }
 .simulated-chip { display: inline-flex; align-items: center; padding: 4px 8px; border: 1px solid rgba(225,200,56,.4); border-radius: 4px; background: var(--accent-soft); color: var(--accent); font: 700 9px var(--font-sans); letter-spacing: .14em; }
 .simulated-banner { display: inline-flex; align-items: center; gap: 10px; color: var(--text-secondary); font-size: 11px; }
 .notice { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-soft); color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
@@ -214,3 +218,9 @@ input[type="checkbox"], input[type="radio"] { width: 16px; min-height: 16px; acc
 
 .analysis-panel .source-note { margin: 0; }
 .analysis-panel .secondary-button--danger { justify-self: start; }
+
+/* ----- last-known and not-available market values ----- */
+.table-scroll { overflow-x: auto; }
+.last-known-note { display: block; color: var(--accent); font: 600 9px var(--font-sans); letter-spacing: .06em; }
+.summary-card--last-known { border-color: rgba(225,200,56,.35); }
+.summary-card--unavailable .not-available { font-size: 15px; }

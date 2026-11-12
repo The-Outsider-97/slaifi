@@ -263,8 +263,8 @@ export function MarketPerformanceChart({
         </div>
       ) : !chart ? (
         <div className="data-state">
-          Historical market data is
-          not available for this
+          NOT AVAILABLE · no live or
+          saved history for this
           instrument.
         </div>
       ) : (
@@ -433,10 +433,19 @@ export function MarketPerformanceChart({
 
           <p className="source-note">
             Source:{" "}
-            {history?.data_mode ??
-              "unknown"}
+            {history?.source ??
+              "none"}
+            {history?.last_known
+              ? ` · LAST KNOWN DATA (saved ${
+                  history.saved_at
+                    ? new Date(
+                        history.saved_at,
+                      ).toLocaleString()
+                    : "earlier"
+                }; providers could not be reached)`
+              : " · retrieved"}
             {" · "}
-            Updated{" "}
+            Checked{" "}
             {history
               ? new Date(
                   history.generated_at,

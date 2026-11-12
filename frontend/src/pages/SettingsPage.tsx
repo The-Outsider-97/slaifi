@@ -5,7 +5,8 @@ import { useAction, useAsync } from "../hooks/useAsync";
 import { useTheme } from "../hooks/useTheme";
 import { dateTime, humanize } from "../lib/format";
 import { fetchSlaiStatus } from "../services/api";
-import { backupNow, fetchAudit, fetchSystemStatus, reconcileAll } from "../services/finance";
+import { backupNow, checkProviders, fetchAudit, fetchProviders, fetchSystemStatus, reconcileAll } from "../services/finance";
+import type { ProviderStatus } from "../types/finance";
 
 function Row({ label, value, tone }: { label: string; value: string; tone?: "ok" | "bad" | "warn" }) {
   return (
@@ -16,11 +17,36 @@ function Row({ label, value, tone }: { label: string; value: string; tone?: "ok"
   );
 }
 
+const KEY_VARIABLE: Record<string, string> = {
+  twelvedata: "SLAIFI_TWELVEDATA_API_KEY",
+  tiingo: "SLAIFI_TIINGO_API_KEY",
+  fmp: "SLAIFI_FMP_API_KEY",
+  finnhub: "SLAIFI_FINNHUB_API_KEY",
+  alphavantage: "SLAIFI_ALPHAVANTAGE_API_KEY",
+};
+
+function providerState(p: ProviderStatus): { text: string; tone?: "ok" | "bad" | "warn" } {
+  switch (p.state) {
+    case "ready":
+      return { text: p.last_success_at ? "Working" : "Ready (not used yet)", tone: "ok" };
+    case "cooling_down":
+      return { text: `Paused after an error${p.cooldown_until ? ` until ${dateTime(p.cooldown_until)}` : ""}`, tone: "warn" };
+    case "rejected_credentials":
+      return { text: "API key rejected", tone: "bad" };
+    case "not_configured":
+      return { text: "No key set", tone: undefined };
+    default:
+      return { text: humanize(p.state) };
+  }
+}
+
 export function SettingsPage() {
   const { theme, toggleTheme } = useTheme();
   const status = useAsync((signal) => fetchSystemStatus(signal), "status");
   const slai = useAsync((signal) => fetchSlaiStatus(signal), "slai");
   const audit = useAsync((signal) => fetchAudit(40, signal), "audit");
+  const providers = useAsync((signal) => fetchProviders(signal), "providers");
+  const check = useAction(checkProviders);
   const reconcile = useAction(reconcileAll);
   const backup = useAction(backupNow);
 
@@ -50,12 +76,19 @@ export function SettingsPage() {
             {status.error ? <Notice tone="error" onRetry={status.reload}>{status.error}</Notice> : null}
             {s ? (
               <dl className="settings-list">
-                <Row label="Market data" value={s.data_mode === "mock" ? "Mock (illustrative, not real prices)" : humanize(s.data_mode)} tone={s.data_mode === "mock" ? "warn" : "ok"} />
-                <Row label="Provider" value={s.market_provider} />
+                <Row
+                  label="Market data sources"
+                  value={
+                    s.market_configured
+                      ? `${s.market_providers.filter((p) => p.configured).length} of ${s.market_providers.length} configured`
+                      : "None configured — prices show NOT AVAILABLE"
+                  }
+                  tone={s.market_configured ? "ok" : "bad"}
+                />
                 <Row label="Ledger storage" value={s.storage_status === "ok" ? "Healthy" : s.storage_status} tone={s.storage_status === "ok" ? "ok" : "bad"} />
                 <Row label="Audit chain" value={s.audit_chain_intact ? "Intact" : `Broken${s.audit_chain_detail ? `: ${s.audit_chain_detail}` : ""}`} tone={s.audit_chain_intact ? "ok" : "bad"} />
                 <Row label="Real-money trading" value="Unavailable — paper trading only" tone="ok" />
-                <Row label="Orders on illustrative prices" value={s.paper_trading.allow_illustrative_execution ? "Allowed (labelled)" : "Refused"} />
+                <Row label="Orders on last-known prices" value="Always refused" />
                 <Row label="Orders while market is closed" value={s.paper_trading.allow_closed_market_execution ? "Allowed" : "Refused"} />
                 <Row label="Oldest quote an order may use" value={`${s.paper_trading.max_quote_age_seconds} seconds`} />
                 <Row label="Write protection header" value={s.client_header_required ? "Required" : "Off"} />
@@ -64,11 +97,6 @@ export function SettingsPage() {
             {s && s.storage_status !== "ok" ? (
               <Notice tone="error" title="Order placement is disabled">
                 The ledger failed its integrity check. Reads still work. Restore the database from a backup in the SLAIFI data folder, then restart.
-              </Notice>
-            ) : null}
-            {s?.data_mode === "mock" ? (
-              <Notice tone="warning" title="Illustrative data">
-                A mock provider is configured. Prices, charts and simulated fills are not real market data. Set a market provider key to use real data.
               </Notice>
             ) : null}
           </section>
@@ -96,6 +124,85 @@ export function SettingsPage() {
             </p>
           </section>
         </div>
+
+        <section className="panel analysis-panel" aria-labelledby="sources-title" data-testid="market-sources">
+          <div className="panel-heading">
+            <div>
+              <span className="section-kicker">REAL MARKET DATA</span>
+              <h2 id="sources-title">Market data sources</h2>
+            </div>
+            <div className="button-row">
+              <button type="button" className="secondary-button" onClick={() => providers.reload()}>
+                Refresh
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={check.running}
+                onClick={() => void check.run().then(() => providers.reload())}
+              >
+                {check.running ? "Checking…" : "Check providers"}
+              </button>
+            </div>
+          </div>
+          <p className="muted">
+            SLAIFI asks these sources in order and uses the first that answers. If none can be reached it shows the last real
+            price it saved (labelled with when it was observed); if there is none it says NOT AVAILABLE. Nothing is ever invented.
+            Each source needs its own free key, set as an environment variable before starting SLAIFI. Keys are never shown here.
+          </p>
+          {providers.loading && !providers.data ? <Loading /> : null}
+          {providers.error ? <Notice tone="error" onRetry={providers.reload}>{providers.error}</Notice> : null}
+          {providers.data && !providers.data.configured ? (
+            <Notice tone="warning" title="No market-data key is set">
+              Set at least one of the variables below (three or more are recommended for failover), restart SLAIFI, then use Check providers.
+            </Notice>
+          ) : null}
+          {providers.data ? (
+            <div className="table-scroll">
+              <table className="table" aria-label="Market data sources">
+                <thead>
+                  <tr>
+                    <th>Source</th>
+                    <th>Status</th>
+                    <th>Provides</th>
+                    <th>Calls (min / today)</th>
+                    <th>Last success</th>
+                    <th>Last problem</th>
+                    <th>Key variable</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {providers.data.providers.map((p) => {
+                    const st = providerState(p);
+                    const verdict = check.result?.checks.find((c) => c.name === p.name);
+                    return (
+                      <tr key={p.name} data-testid={`provider-${p.name}`}>
+                        <td>
+                          <strong>{p.label}</strong>
+                          {p.free_tier_note ? <small className="block">{p.free_tier_note}</small> : null}
+                        </td>
+                        <td className={st.tone === "ok" ? "positive-text" : st.tone === "bad" ? "negative-text" : undefined}>
+                          {st.text}
+                          {verdict ? (
+                            <small className="block" data-testid={`check-${p.name}`}>
+                              {verdict.ok ? "✓" : "✗"} {verdict.detail}
+                            </small>
+                          ) : null}
+                        </td>
+                        <td>{p.capabilities.length ? p.capabilities.join(", ") : "—"}{p.intervals.length ? ` (${p.intervals.join(", ")})` : ""}</td>
+                        <td>{p.configured ? `${p.calls_last_minute} / ${p.calls_today}` : "—"}</td>
+                        <td>{p.last_success_at ? dateTime(p.last_success_at) : "—"}</td>
+                        <td>{p.last_error ? `${p.last_error}${p.last_error_at ? ` (${dateTime(p.last_error_at)})` : ""}` : "—"}</td>
+                        <td><code>{KEY_VARIABLE[p.name] ?? "—"}</code></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+          {check.error ? <Notice tone="error">{check.error}</Notice> : null}
+        </section>
 
         <div className="dashboard-grid dashboard-grid--secondary">
           <section className="panel analysis-panel" aria-labelledby="appearance-title">

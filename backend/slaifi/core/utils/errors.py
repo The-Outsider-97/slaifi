@@ -106,5 +106,9 @@ class MarketDataRateLimitedError(MarketDataError):
         self.retry_after_seconds = retry_after_seconds
 
 
+class MarketDataNotEntitledError(MarketDataError):
+    """The provider's free plan does not include this data (for example a premium endpoint)."""
+
+
 class SymbolNotFoundError(MarketDataError, NotFoundError):
     """The provider does not know the requested symbol."""

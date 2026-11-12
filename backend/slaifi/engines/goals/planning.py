@@ -27,7 +27,7 @@ from slaifi.engines.utils.errors import EngineValidationError
 
 _CENT = Decimal("0.01")
 _ZERO = Decimal("0")
-# Labelled illustrative grid. These are *not* forecasts; they show sensitivity only.
+# Hypothetical return grid. These are *not* forecasts; they show sensitivity only.
 HYPOTHETICAL_ANNUAL_RATES: tuple[float, ...] = (0.0, 0.04, 0.08, 0.12)
 HYPOTHETICAL_STRESS_LOSS_RATE = 0.20
 # Heuristic bands used only to phrase warnings; stated in docs/finance/goals-model.md.

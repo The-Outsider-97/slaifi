@@ -1,9 +1,11 @@
 # Operating SLAIFI
 
 * **Market Overview / Stock Analysis** – search a symbol, choose interval and range (only
-  intervals the active provider supports are offered), toggle indicators, compare symbols,
-  add to the watchlist. Every figure carries provider, observation time, delay and a mode badge:
-  *Live*, *Delayed* or *Illustrative*. Illustrative (mock) data never produces BUY/SELL.
+  intervals at least one configured source supports are offered), toggle indicators, compare symbols,
+  add to the watchlist. Every figure carries source, observation time, delay and a badge:
+  *Live*, *Delayed*, *Provider data · delay unknown*, *Retrieved* (history), *Last known data ·
+  observed <time>* (saved real data shown because no source answered) or *NOT AVAILABLE*.
+  Last-known history never produces BUY/SELL, and last-known prices are never used to fill an order.
 * **Recommendations** – one of BUY, HOLD, SELL, WATCH, AVOID, REDUCE, DCA, or an explicit
   "insufficient evidence" with the reasons. Includes supporting and conflicting signals, risks
   and invalidation conditions. "Explain with SLAI" adds an interpretation that cannot change the action.
@@ -18,7 +20,7 @@
   volatility cap, costs, …). Presets (Short/Long-term × Hawkish/Care-Bear) only initialise values
   and do not lock them. Hard limits override optimisation preferences. Goals report feasibility,
   required return, conflicts, measured progress and hypothetical scenarios.
-* **Settings** – data mode and freshness, ledger health, audit-chain verification, backup.
+* **Settings** – market-data sources (configured, working, calls used, last problem, *Check providers*), ledger health, audit-chain verification, backup.
 
 ## Backup and recovery
 `POST /api/v1/system/backup` (Settings → Back up) writes a coherent SQLite backup. Startup

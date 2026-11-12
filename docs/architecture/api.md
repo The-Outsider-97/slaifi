@@ -7,7 +7,7 @@ FastAPI is a delivery boundary. It validates and serializes HTTP data, invokes p
 | Method | Path | Responsibility |
 |---|---|---|
 | GET | `/health` | Process liveness |
-| GET | `/api/v1/market/overview` | Existing mock-provider overview slice |
+| GET | `/api/v1/market/overview` | Overview quotes from the multi-source gateway (live, last known or NOT AVAILABLE per symbol) |
 | POST | `/api/v1/analysis/market` | Analyze caller-supplied normalized OHLCV observations |
 | POST | `/api/v1/analysis/portfolio` | Analyze a supplied portfolio, prices, optional risk series and goal |
 | POST | `/api/v1/goals/evaluate` | Evaluate goal arithmetic and optionally add separate SLAI interpretation |

@@ -20,18 +20,32 @@ Components represent product responsibilities rather than individual labels. Fin
 
 ## Data provenance
 
-The UI never silently mixes demo and live values.
+The UI shows real market data only and always says what kind it is. There are no sample, mock or
+placeholder values anywhere in the package.
 
-- `GET /api/v1/market/overview` supplies normalized quote data. The current backend explicitly returns `data_mode="mock"`; while that remains true, the screenshot-aligned headline index values stay illustrative instead of presenting mock SPY/QQQ/DIA placeholder prices as live indices.
-- When a future provider changes `data_mode` away from `mock`, matching summary-card quotes may use API values.
-- The performance chart is explicitly labelled `Illustrative data · Not a live market feed` because SLAIFI does not yet expose a historical-series market provider.
-- Market-watch status labels are explicitly described as `Illustrative sample signals — not recommendations.` No recommendation engine is implied.
-- The insight card starts with an illustrative scenario. Its CTA is disabled unless `/api/v1/integrations/slai` reports `available` or `degraded`.
-- Selecting `Explore the reasoning` posts the illustrative OHLCV series to `/api/v1/analysis/market`. Those bars then traverse Domain and Engines before the real SLAI Reasoning Agent sees the calculated evidence. A returned interpretation is therefore real SLAI reasoning over clearly labelled illustrative market data, not fabricated SLAI availability.
+- `GET /api/v1/market/overview` supplies quotes with `source`, `observed_at` and `last_known`,
+  plus `unavailable` (symbols with neither a fresh nor a saved quote) and `data_mode`
+  (`live`, `delayed`, `live_delay_unknown`, `last_known`, `unavailable`).
+- A fresh quote is badged *Live*, *Delayed* or *Provider data · delay unknown*; a saved one is
+  badged **LAST KNOWN DATA · observed <time>** and the page shows a "Showing last known data"
+  banner; a symbol with nothing shows **NOT AVAILABLE** (summary card, watch-list row, chart).
+- The performance chart plots the retrieved history of the first overview symbol and states its
+  source and, for saved data, when it was saved. With no history it says NOT AVAILABLE.
+- Market-watch rows show real price, change and source only; no signals or recommendations are
+  implied by the table.
+- The insight card's CTA is disabled unless `/api/v1/integrations/slai` reports `available` or
+  `degraded` and at least two real bars are loaded. `Explore the reasoning` posts those bars to
+  `/api/v1/analysis/market`; they traverse Domain and Engines before the SLAI Reasoning Agent sees
+  the calculated evidence.
+- Hovering a badge lists each source that was tried and its outcome (never a key).
+- Settings → *Market data sources* shows each source's state, calls used, last success/problem,
+  the environment variable that holds its key, and a **Check providers** button.
 
 ## Failure states
 
-Market API failure leaves the educational dashboard available with an explicit fallback warning. SLAI status or reasoning failure never removes deterministic/illustrative financial content. Runtime state is shown as available, degraded, unavailable, or disabled according to the backend contract.
+If the market API fails, the page says NOT AVAILABLE with the reason; it never substitutes other
+numbers. SLAI status or reasoning failure never removes deterministic financial content. Runtime
+state is shown as available, degraded, unavailable, or disabled according to the backend contract.
 
 ## Presentation conversions
 

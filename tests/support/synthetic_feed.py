@@ -1,9 +1,8 @@
-"""Deterministic mock provider used only for tests and explicit demo mode.
+"""Deterministic TEST DOUBLE for the market-data provider contract.
 
-Everything it returns is **illustrative**: quotes carry ``illustrative=True`` and any synthetic
-history is generated deterministically from the symbol, so it is repeatable but is never market
-data. History generation is off by default and enabled explicitly by configuration
-(``SLAIFI_MOCK_ILLUSTRATIVE_HISTORY``); with it off the provider returns no bars, exactly as before.
+It lives in tests/ and is never shipped or importable from the application. It lets the suite
+exercise the complete workflow without network access or API keys. The numbers are synthetic;
+the application itself has no mock mode.
 """
 
 from __future__ import annotations
@@ -15,13 +14,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from logs.logger import get_logger
-
 from slaifi.core.types import CurrencyCode
 from slaifi.domain.assets import AssetClass, AssetId
+from slaifi.domain.market import ProviderPolicy
 from slaifi.domain.market.models import AssetRef, InstrumentInfo, OHLCVBar, PriceQuote
-
-logger = get_logger("SLAIFI Mock Market Data")
+from slaifi.infrastructure.market_data.base import RequestBudget
 
 _ANCHOR = datetime(2018, 1, 1, tzinfo=UTC)
 
@@ -43,7 +40,7 @@ class _Spec:
 _CATALOG: tuple[_Spec, ...] = (
     _Spec(
         "SPY",
-        "SPDR S&P 500 ETF Trust (illustrative)",
+        "SPDR S&P 500 ETF Trust",
         AssetClass.ETF,
         "NYSE",
         "100.00",
@@ -54,7 +51,7 @@ _CATALOG: tuple[_Spec, ...] = (
     ),
     _Spec(
         "QQQ",
-        "Invesco QQQ Trust (illustrative)",
+        "Invesco QQQ Trust",
         AssetClass.ETF,
         "NASDAQ",
         "200.00",
@@ -65,7 +62,7 @@ _CATALOG: tuple[_Spec, ...] = (
     ),
     _Spec(
         "DIA",
-        "SPDR Dow Jones Industrial Average ETF (illustrative)",
+        "SPDR Dow Jones Industrial Average ETF",
         AssetClass.ETF,
         "NYSE",
         "150.00",
@@ -76,7 +73,7 @@ _CATALOG: tuple[_Spec, ...] = (
     ),
     _Spec(
         "VIX",
-        "CBOE Volatility Index (illustrative)",
+        "CBOE Volatility Index",
         AssetClass.INDEX,
         "CBOE",
         "20.00",
@@ -85,10 +82,10 @@ _CATALOG: tuple[_Spec, ...] = (
         instrument_type="Index",
         legacy_change_percent="0.00",
     ),
-    _Spec("AAPL", "Apple Inc. (illustrative)", AssetClass.EQUITY, "NASDAQ", "180.00", 0.14, 0.28),
+    _Spec("AAPL", "Apple Inc.", AssetClass.EQUITY, "NASDAQ", "180.00", 0.14, 0.28),
     _Spec(
         "MSFT",
-        "Microsoft Corporation (illustrative)",
+        "Microsoft Corporation",
         AssetClass.EQUITY,
         "NASDAQ",
         "380.00",
@@ -97,35 +94,29 @@ _CATALOG: tuple[_Spec, ...] = (
     ),
     _Spec(
         "GOOGL",
-        "Alphabet Inc. Class A (illustrative)",
+        "Alphabet Inc. Class A",
         AssetClass.EQUITY,
         "NASDAQ",
         "140.00",
         0.12,
         0.29,
     ),
-    _Spec(
-        "AMZN", "Amazon.com, Inc. (illustrative)", AssetClass.EQUITY, "NASDAQ", "170.00", 0.13, 0.33
-    ),
+    _Spec("AMZN", "Amazon.com, Inc.", AssetClass.EQUITY, "NASDAQ", "170.00", 0.13, 0.33),
     _Spec(
         "NVDA",
-        "NVIDIA Corporation (illustrative)",
+        "NVIDIA Corporation",
         AssetClass.EQUITY,
         "NASDAQ",
         "450.00",
         0.30,
         0.50,
     ),
-    _Spec("TSLA", "Tesla, Inc. (illustrative)", AssetClass.EQUITY, "NASDAQ", "240.00", 0.10, 0.58),
-    _Spec(
-        "JNJ", "Johnson & Johnson (illustrative)", AssetClass.EQUITY, "NYSE", "155.00", 0.05, 0.16
-    ),
-    _Spec(
-        "KO", "The Coca-Cola Company (illustrative)", AssetClass.EQUITY, "NYSE", "60.00", 0.05, 0.15
-    ),
+    _Spec("TSLA", "Tesla, Inc.", AssetClass.EQUITY, "NASDAQ", "240.00", 0.10, 0.58),
+    _Spec("JNJ", "Johnson & Johnson", AssetClass.EQUITY, "NYSE", "155.00", 0.05, 0.16),
+    _Spec("KO", "The Coca-Cola Company", AssetClass.EQUITY, "NYSE", "60.00", 0.05, 0.15),
     _Spec(
         "BND",
-        "Vanguard Total Bond Market ETF (illustrative)",
+        "Vanguard Total Bond Market ETF",
         AssetClass.ETF,
         "NASDAQ",
         "72.00",
@@ -135,7 +126,7 @@ _CATALOG: tuple[_Spec, ...] = (
     ),
     _Spec(
         "GLD",
-        "SPDR Gold Shares (illustrative)",
+        "SPDR Gold Shares",
         AssetClass.ETF,
         "NYSE",
         "185.00",
@@ -145,7 +136,7 @@ _CATALOG: tuple[_Spec, ...] = (
     ),
     _Spec(
         "BTC/USD",
-        "Bitcoin / US Dollar (illustrative)",
+        "Bitcoin / US Dollar",
         AssetClass.CRYPTO,
         "Coinbase",
         "40000.00",
@@ -157,7 +148,7 @@ _CATALOG: tuple[_Spec, ...] = (
 _BY_SYMBOL = {spec.symbol: spec for spec in _CATALOG}
 _DEFAULT = _Spec(
     "?",
-    "Unknown instrument (illustrative)",
+    "Unknown instrument",
     AssetClass.UNKNOWN,
     "",
     "50.00",
@@ -183,18 +174,22 @@ def _is_trading_day(day: datetime) -> bool:
     return day.weekday() < 5
 
 
-class MockMarketDataProvider:
-    """Explicit deterministic test/demo market provider. Never real market data."""
+class SyntheticFeed:
+    """Deterministic synthetic provider; duck-types the adapters the gateway drives."""
 
-    data_mode = "mock"
-    # Symbols outside the illustrative catalogue are rejected by the market service.
-    strict_catalog = True
-    source_name = "mock"
-    # Only daily bars are ever generated; intraday or weekly data would have to be invented.
+    name = "testfeed"
+    label = "Test feed"
+    capabilities: tuple[str, ...] = ("quotes", "bars", "search")
     supported_intervals: tuple[str, ...] = ("1day",)
+    data_mode = "live"
 
-    def __init__(self, *, illustrative_history: bool = False) -> None:
-        self._illustrative_history = illustrative_history
+    def __init__(self) -> None:
+        self.policy = ProviderPolicy(note="test double")
+        self.budget = RequestBudget(self.policy)
+        self.calls = 0
+
+    async def close(self) -> None:
+        return None
 
     # ----------------------------------------------------------------- search
     async def search_instruments(self, query: str, *, limit: int = 10) -> Sequence[InstrumentInfo]:
@@ -212,7 +207,6 @@ class MockMarketDataProvider:
                         name=spec.name,
                         country=spec.country,
                         instrument_type=spec.instrument_type,
-                        illustrative=True,
                     )
                 )
         hits.sort(key=lambda info: (info.asset.symbol.lower() != needle, info.asset.symbol))
@@ -220,17 +214,16 @@ class MockMarketDataProvider:
 
     # ----------------------------------------------------------------- quotes
     async def get_quotes(self, assets: Sequence[AssetRef]) -> Sequence[PriceQuote]:
+        self.calls += 1
         observed_at = datetime.now(UTC)
-        quotes = [self._quote(asset, observed_at) for asset in assets]
-        logger.debug("Generated %d deterministic mock quote(s)", len(quotes))
-        return quotes
+        return [self._quote(a, observed_at) for a in assets if a.symbol in _BY_SYMBOL]
 
     def _quote(self, asset: AssetRef, observed_at: datetime) -> PriceQuote:
         spec = _BY_SYMBOL.get(asset.symbol, _DEFAULT)
         base = Decimal(spec.base_price)
         change_rate: float | None
         previous: Decimal | None = None
-        if self._illustrative_history and spec is not _DEFAULT:
+        if spec is not _DEFAULT:
             closes = self._closes(spec, observed_at, 2)
             price = closes[-1]
             previous = closes[-2] if len(closes) > 1 else None
@@ -250,11 +243,10 @@ class MockMarketDataProvider:
             change_rate=change_rate,
             currency=CurrencyCode("USD"),
             observed_at=observed_at,
-            source="mock",
+            source="testfeed",
             is_market_open=None,
-            delayed=None,
+            delayed=False,
             previous_close=previous,
-            illustrative=True,
         )
 
     # ----------------------------------------------------------------- history
@@ -266,9 +258,8 @@ class MockMarketDataProvider:
         end_at: datetime,
         interval: str = "1day",
     ) -> Sequence[OHLCVBar]:
-        # Empty unless illustrative history is explicitly enabled: the UI then shows
-        # "historical data unavailable" rather than drawing invented data.
-        if not self._illustrative_history or interval != "1day":
+        self.calls += 1
+        if interval != "1day":
             return ()
         spec = _BY_SYMBOL.get(asset.symbol)
         if spec is None:

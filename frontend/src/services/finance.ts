@@ -14,6 +14,8 @@ import type {
   PerformanceResponse,
   PortfolioMeta,
   PortfolioView,
+  ProviderCheck,
+  ProvidersResponse,
   QuoteResponse,
   Reconciliation,
   RecommendationResponse,
@@ -47,6 +49,14 @@ function mutate<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, bo
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 }
+
+// ------------------------------------------------------------------ market data sources
+export const fetchProviders = (signal?: AbortSignal) =>
+  apiRequest<ProvidersResponse>(`${V1}/system/providers`, { signal });
+
+/** Makes one real request per configured provider (spends a little of each free quota). */
+export const checkProviders = () =>
+  mutate<{ checks: ProviderCheck[] }>("POST", `${V1}/system/providers/check`);
 
 // ------------------------------------------------------------------ market
 export const marketMeta = (signal?: AbortSignal) => apiRequest<MarketMeta>(`${V1}/market/meta`, { signal });

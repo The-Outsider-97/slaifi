@@ -64,7 +64,7 @@ class RecommendationInputs:
     generated_at: datetime
     interval: str = "1day"
     data_mode: str = "unknown"
-    illustrative: bool = False
+    last_known: bool = False
     snapshot: PortfolioSnapshot | None = None
     portfolio_drawdown: float | None = None
 
@@ -95,7 +95,7 @@ def _insufficient(
         observation_count=count,
         last_bar_at=last_bar_at,
         data_mode=inputs.data_mode,
-        illustrative=inputs.illustrative,
+        last_known=inputs.last_known,
         position_quantity=holding_qty,
         model_versions=(RULES_MODEL,),
         summary="Insufficient evidence: " + " ".join(reasons),
@@ -126,12 +126,12 @@ def build_report(inputs: RecommendationInputs) -> RecommendationReport:  # noqa:
                 holding_qty = str(valuation.position.quantity)
 
     reasons: list[str] = []
-    quality = assess_bars(bars, inputs.interval)
-    if inputs.illustrative:
+    if inputs.last_known:
         reasons.append(
-            "The price history is illustrative (synthetic) data, which cannot support a "
-            "recommendation."
+            "Only saved (last-known) history is available because no live data source could be "
+            "reached; recommendations need freshly retrieved data."
         )
+    quality = assess_bars(bars, inputs.interval)
     if len(bars) < MIN_BARS_FOR_SIGNALS:
         reasons.append(
             f"Only {len(bars)} bars are available; at least {MIN_BARS_FOR_SIGNALS} are needed."
@@ -327,7 +327,7 @@ def build_report(inputs: RecommendationInputs) -> RecommendationReport:  # noqa:
         observation_count=len(bars),
         last_bar_at=bars[-1].end_at,
         data_mode=inputs.data_mode,
-        illustrative=inputs.illustrative,
+        last_known=inputs.last_known,
         position_quantity=holding_qty,
         model_versions=(RULES_MODEL, ModelVersion(MODEL_NAME, MODEL_VERSION))
         if prediction

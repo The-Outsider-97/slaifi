@@ -7,14 +7,14 @@ Results below are from commands actually executed in the development sandbox (no
 
 | Check | Result |
 | --- | --- |
-| `pytest` (backend: unit, financial, API, architecture, 12-step integration workflow, degraded operation) | **163 passed** |
+| `pytest` (backend: unit, financial, API, architecture, integration workflow, degraded operation, provider adapters, multi-provider failover, last-known cache) | **273 passed** |
 | `ruff check backend tests run_slaifi.py` (E501 ignored; `ruff format` owns line length) | all checks passed |
-| `ruff format --check` | 167 files formatted |
-| `mypy --strict` on `slaifi.api/application/domain/engines/infrastructure/integrations` and `slaifi.main` | no issues |
+| `ruff format --check` | 216 files formatted |
+| `mypy --strict` on the whole package | no defects in SLAIFI code; the only reports are sandbox artefacts (SLAI host modules and the `pydantic_settings` shim have no type stubs) |
 | TypeScript `tsc --noEmit` (app source) | clean, except `import.meta.env` types that need `vite/client` (absent in the sandbox) |
 | esbuild bundle of the UI | builds |
-| Browser end-to-end (Playwright/Chromium vs. live uvicorn + built UI, mock provider): analysis, watchlist, comparison, paper order preview/execute/persist-after-reload/reconcile/reset guard, advisor confirm flow, strategy hard-limit acknowledgement, goals, settings, backup, mobile overflow, console errors, 5xx | **41 / 41** |
-| Frontend unit tests (21) | 21 passed — on a minimal stand-in for vitest (see below) |
+| Browser end-to-end (Playwright/Chromium vs. live uvicorn + built UI, with the four configured providers answered by a **local stand-in HTTP server** that serves documented response shapes): live → failover (one provider rate-limited, one down) → last known data → NOT AVAILABLE; orders refused on last-known prices; holdings labelled by price basis; Check providers; keys never displayed or logged; last-known data survives a backend restart; plus analysis, watchlist, comparison, paper orders, advisor, strategies, goals, settings, backup, mobile overflow, console errors, 5xx | **54 / 54** |
+| Frontend unit tests (24: format, App, finance components) | 24 passed — on a minimal stand-in for vitest (see below) |
 | Standalone API smoke from CI (`/health`, `system/status`, overview, SLAI status) | passed |
 
 The integration workflow covers: select a strategy → search → quote/series → recommendation →
@@ -23,10 +23,9 @@ with confirmation → rejected order → reconcile → reset with confirmation.
 
 ## NOT executed / limitations (please read)
 
-1. **Real vitest and the pre-existing frontend tests (`MarketOverviewPage.test.tsx`,
-   `MyPortfolioPage.test.tsx`) were not run**: vitest cannot be installed offline. The 21 new
-   frontend unit tests were run on a tiny stand-in runner that implements only the matchers they use.
-   Run `npm install && npm test` to execute them with the real runner.
+1. **Real vitest and the page tests (`MarketOverviewPage.test.tsx`, `MyPortfolioPage.test.tsx`) were not run**:
+   vitest and Testing Library cannot be installed offline. The 24 unit tests above ran on a tiny
+   stand-in runner that implements only the matchers they use. Run `npm install && npm test`.
 2. **`mypy` on `slaifi.core`** reports one error caused by a sandbox-only `pydantic_settings` shim
    (`BaseSettings` typed as `Any`). It was not a defect in the repository; the real package was not available.
    Settings behaviour was exercised through that shim, so run the suite once with the real package installed.
@@ -35,14 +34,22 @@ with confirmation → rejected order → reconcile → reset with confirmation.
    `AgentFactory`, `SharedMemory`, the reasoning agent and the SafetyAgent were therefore exercised
    only through test doubles and the "unavailable/disabled" paths. The SLAI-backed explanation and
    safety review have **not** been run against the real agents.
-4. **Live market data** (Twelve Data) was not exercised: there is no API key or network. Provider
-   error mapping (rate limit, timeout, unusable response) is unit-tested with fakes; live behaviour is unverified.
+4. **The real provider APIs (Twelve Data, Tiingo, FMP, Finnhub, Alpha Vantage) were never reached**:
+   the sandbox has no network access to them and no keys. The adapters were written from each
+   provider's documented request/response format and tested against fakes and a local stand-in
+   server whose **numbers are synthetic test data (never shipped)**. A field that a provider
+   renamed, or a plan restriction not yet known, will only show up with real keys. Settings →
+   *Market data sources* → **Check providers** makes one real request per key and reports exactly
+   what failed. Free-tier limits (e.g. Alpha Vantage 25/day) are assumptions that may have changed.
+   When a provider omits a currency, USD is assumed.
 5. The first full run in your environment should be `python run_slaifi.py` followed by the UI;
    no such run was possible here.
 6. The CI workflow changes (SLAI host checkout, new smoke) have not been executed on GitHub.
 
 ## Known behaviour worth knowing
 
-* Mock/illustrative data always yields "insufficient evidence" — by design, so no BUY/SELL is derived from synthetic prices.
+* Last-known (saved) history always yields "insufficient evidence", and last-known quotes are never used to fill orders — by design.
+* A source that rejects its key stays marked *API key rejected* until SLAIFI is restarted.
+* The first overview load costs about eight provider calls (it classifies the four default symbols); the results are saved.
 * Advisor parsing is rule-based and covers a limited set of phrasings; unrecognised text is shown as not understood.
 * Prediction intervals appear only when walk-forward validation passes; with short histories none will.

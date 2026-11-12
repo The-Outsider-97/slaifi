@@ -3,7 +3,7 @@
 The ledger in the store is the single source of truth. This service never keeps its own copy of
 holdings or cash: every view is *derived* from the ledger by the portfolio engines. Orders are
 priced from provider quotes that are validated for freshness, currency, market status and
-illustrative-ness; the simulated fill (with slippage and commission) is recorded separately from
+whether they are current (a last-known price is never executable); the simulated fill (with slippage and commission) is recorded separately from
 the quotation. Real-money trading does not exist anywhere in this code base.
 """
 
@@ -84,7 +84,7 @@ def _money(value: Decimal, name: str) -> Decimal:
 @dataclass(frozen=True, slots=True)
 class PositionView:
     valuation: PositionValuation
-    price_basis: str  # quote | last_fill
+    price_basis: str  # quote | last_known | last_fill
     stale: bool
     quote: QuoteView | None
     asset_class: str
@@ -103,7 +103,6 @@ class PortfolioView:
     net_contributions: Decimal
     total_pnl: Decimal
     simple_return: float | None
-    illustrative_fill_count: int
     valuation_complete: bool
     strategy_id: str | None
     warnings: tuple[str, ...] = ()
@@ -283,7 +282,7 @@ class PaperTradingService:
                 f"Live prices are unavailable ({type(exc).__name__}); holdings are valued at their last fill price."
             )
             return {}, warnings
-        return {v.quote.asset: v for v in views if v.quote.currency}, warnings
+        return {v.asset: v for v in views if v.quote is not None}, warnings
 
     def _valued(
         self,
@@ -298,9 +297,13 @@ class PaperTradingService:
             if position.quantity <= 0:
                 continue
             mark = marks.get(position.asset)
-            if mark is not None and mark.quote.currency == ledger.base_currency:
+            if (
+                mark is not None
+                and mark.quote is not None
+                and mark.quote.currency == ledger.base_currency
+            ):
                 prices[position.asset] = mark.quote.price
-                basis[position.asset] = "quote"
+                basis[position.asset] = "last_known" if mark.quote.last_known else "quote"
             else:
                 prices[position.asset] = fills[position.asset]
                 basis[position.asset] = "last_fill"
@@ -336,7 +339,6 @@ class PaperTradingService:
             ),
             _ZERO,
         )
-        illustrative = sum(1 for s in stored_trades if s.execution and s.execution.illustrative)
         contributions = _ZERO
         for flow in ledger.cash_flows:
             if flow.kind is CashFlowKind.CONTRIBUTION:
@@ -349,14 +351,12 @@ class PaperTradingService:
             warnings.append(
                 "Some holdings are valued at their last fill price, not a current quotation."
             )
-        if illustrative:
-            warnings.append("This portfolio contains fills at illustrative (non-market) prices.")
         for p in positions:
-            if p.quote is not None and p.quote.provenance.illustrative:
+            if p.price_basis == "last_known":
                 warnings.append(
-                    f"{p.valuation.position.asset.symbol} is valued at an illustrative price."
+                    f"{p.valuation.position.asset.symbol} is valued at its last known price "
+                    "(live data sources could not be reached)."
                 )
-                break
         if record:
             self._maybe_record_view(portfolio, snapshot, now)
         return PortfolioView(
@@ -371,7 +371,6 @@ class PaperTradingService:
             net_contributions=contributions,
             total_pnl=total_pnl,
             simple_return=float(total_pnl / contributions) if contributions > 0 else None,
-            illustrative_fill_count=illustrative,
             valuation_complete=complete,
             strategy_id=portfolio.strategy_id,
             warnings=tuple(dict.fromkeys(warnings)),
@@ -638,8 +637,9 @@ class PaperTradingService:
             return None, exc.message
         except Exception as exc:  # noqa: BLE001
             return None, f"The quotation service failed ({type(exc).__name__})."
-        if view is None:
-            return None, "The data provider returned no quotation for this symbol."
+        if view.quote is None:
+            detail = " ".join(view.provenance.notes) or "No data source returned a quotation."
+            return None, f"NOT AVAILABLE: {detail}"
         return view, None
 
     async def _canonical_asset(
@@ -678,7 +678,6 @@ class PaperTradingService:
                         "gross": str(t.quantity * t.unit_price),
                         "quote_price": str(ex.quote_price) if ex else None,
                         "data_mode": ex.data_mode if ex else None,
-                        "illustrative": ex.illustrative if ex else None,
                     },
                 )
             )
@@ -744,10 +743,6 @@ class PaperTradingService:
             summary.note,
             "Returns are in the portfolio's base currency; no FX conversion is applied.",
         ]
-        if view.illustrative_fill_count:
-            notes.append(
-                "Some results come from illustrative prices and say nothing about real markets."
-            )
         return PerformanceView(
             portfolio_id=portfolio_id,
             summary=summary,

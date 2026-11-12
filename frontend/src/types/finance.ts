@@ -1,6 +1,22 @@
 /** Shapes returned by the SLAIFI finance API. Money and quantities are decimal strings; rates are fractions. */
 
-export type DataMode = "mock" | "live" | "delayed" | "live_delay_unknown" | string;
+/**
+ * How a piece of market data was obtained.
+ *  live / delayed / live_delay_unknown: a quote retrieved just now (delay known / unknown)
+ *  retrieved: history or search results retrieved just now
+ *  last_known: every source failed, so this is the last real observation SLAIFI saved
+ *  unavailable: nothing live and nothing saved: shown as NOT AVAILABLE
+ */
+export type DataMode =
+  | "live"
+  | "delayed"
+  | "live_delay_unknown"
+  | "retrieved"
+  | "last_known"
+  | "unavailable"
+  | string;
+
+export type SourceAttempt = { source: string; outcome: string; detail: string | null };
 
 export type Asset = {
   symbol: string;
@@ -12,13 +28,17 @@ export type Asset = {
 
 export type Provenance = {
   mode: DataMode;
-  source: string;
-  illustrative: boolean;
+  available: boolean;
+  source: string | null;
+  last_known: boolean;
+  /** When SLAIFI saved a last-known observation (null for live data). */
+  saved_at: string | null;
   delayed: boolean | null;
   market_open: boolean | null;
   observed_at: string | null;
   retrieved_at: string | null;
   age_seconds: number | null;
+  attempts: SourceAttempt[];
   notes: string[];
 };
 
@@ -27,7 +47,6 @@ export type Instrument = {
   name: string | null;
   country: string | null;
   instrument_type: string | null;
-  illustrative: boolean;
 };
 
 export type SearchResponse = {
@@ -39,12 +58,15 @@ export type SearchResponse = {
 
 export type QuoteResponse = {
   asset: Asset;
-  price: string;
-  currency: string;
+  /** False when no source has a live or saved price: show NOT AVAILABLE. */
+  available: boolean;
+  price: string | null;
+  currency: string | null;
   change_rate: number | null;
   previous_close: string | null;
-  observed_at: string;
-  source: string;
+  observed_at: string | null;
+  source: string | null;
+  last_known: boolean;
   provenance: Provenance;
 };
 
@@ -123,7 +145,8 @@ export type MarketMeta = {
   ranges: string[];
   overlays: string[];
   data_mode: DataMode;
-  provenance: Provenance;
+  configured: boolean;
+  providers: ProviderStatus[];
 };
 
 export type WatchlistResponse = {
@@ -198,7 +221,7 @@ export type RecommendationReport = {
   observation_count: number;
   last_bar_at: string | null;
   data_mode: string;
-  illustrative: boolean;
+  last_known: boolean;
   position_quantity: string | null;
   model_versions: { name: string; version: string }[];
   summary: string;
@@ -313,7 +336,6 @@ export type PortfolioView = {
   slippage_cost: string;
   positions: PositionRow[];
   valuation_complete: boolean;
-  illustrative_fill_count: number;
   simulated: true;
   warnings: string[];
 };
@@ -334,7 +356,6 @@ export type OrderDecision = {
     quote_observed_at: string;
     quote_source: string;
     data_mode: string;
-    illustrative: boolean;
     executed_at: string;
     market_open: boolean | null;
     notes: string[];
@@ -540,11 +561,11 @@ export type SystemStatus = {
   storage_status: string;
   audit_chain_intact: boolean;
   audit_chain_detail: string | null;
-  market_provider: string;
+  market_providers: { name: string; configured: boolean; state: string }[];
+  market_configured: boolean;
   data_mode: string;
   real_money_trading: string;
   paper_trading: {
-    allow_illustrative_execution: boolean;
     allow_closed_market_execution: boolean;
     max_quote_age_seconds: number;
   };
@@ -560,4 +581,37 @@ export type AuditEntry = {
   subject: string;
   detail: Record<string, unknown>;
   hash: string;
+};
+
+export type ProviderState =
+  | "ready"
+  | "cooling_down"
+  | "rejected_credentials"
+  | "not_configured"
+  | string;
+
+export type ProviderStatus = {
+  name: string;
+  label: string;
+  configured: boolean;
+  capabilities: string[];
+  intervals: string[];
+  state: ProviderState;
+  cooldown_until: string | null;
+  last_success_at: string | null;
+  last_error: string | null;
+  last_error_at: string | null;
+  calls_last_minute: number;
+  calls_today: number;
+  free_tier_note: string | null;
+};
+
+export type ProvidersResponse = { configured: boolean; providers: ProviderStatus[] };
+
+export type ProviderCheck = {
+  name: string;
+  configured: boolean;
+  ok: boolean;
+  detail: string;
+  latency_ms: number | null;
 };

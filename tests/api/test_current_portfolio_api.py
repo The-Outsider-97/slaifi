@@ -5,17 +5,19 @@ from decimal import Decimal
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from tests.support import SyntheticFeed, synthetic_gateway
 
 from slaifi.application.contracts import ReasoningRequest, ReasoningResult, ReasoningStatus
 from slaifi.core.config import Settings
 from slaifi.core.types import CurrencyCode
+from slaifi.core.utils.errors import MarketDataUnavailableError
 from slaifi.domain.assets import AssetId
-from slaifi.domain.market.models import OHLCVBar, PriceQuote
+from slaifi.domain.market.models import PriceQuote
 from slaifi.main import create_app
 
 
-class PortfolioMarketProvider:
-    data_mode = "test"
+class PortfolioFeed(SyntheticFeed):
+    """A provider that prices the test portfolio's only holding at a fixed 120."""
 
     async def get_quotes(self, assets: Sequence[AssetId]) -> Sequence[PriceQuote]:
         observed_at = datetime.now(UTC)
@@ -25,20 +27,16 @@ class PortfolioMarketProvider:
                 price=Decimal("120"),
                 currency=CurrencyCode("USD"),
                 observed_at=observed_at,
-                source="test",
+                source="testfeed",
+                delayed=False,
             )
             for asset in assets
         )
 
-    async def get_bars(
-        self,
-        asset: AssetId,
-        *,
-        start_at: datetime,
-        end_at: datetime,
-        interval: str = "1day",
-    ) -> Sequence[OHLCVBar]:
-        return ()
+
+class DownFeed(SyntheticFeed):
+    async def get_quotes(self, assets: Sequence[AssetId]) -> Sequence[PriceQuote]:
+        raise MarketDataUnavailableError("down", component="testfeed", operation="quote")
 
 
 class RecordingReasoner:
@@ -104,7 +102,7 @@ def test_current_portfolio_is_deterministic_by_default(tmp_path: Path) -> None:
     reasoner = RecordingReasoner()
     app = create_app(
         Settings(environment="test", portfolio_file=portfolio_file),
-        market_provider=PortfolioMarketProvider(),
+        market_gateway=synthetic_gateway(PortfolioFeed()),
         financial_reasoner=reasoner,
     )
 
@@ -117,6 +115,9 @@ def test_current_portfolio_is_deterministic_by_default(tmp_path: Path) -> None:
     assert body["snapshot"]["positions"][0]["market_price"] == "120"
     assert body["reasoning"] is None
     assert reasoner.requests == []
+    assert body["price_basis"]["mode"] == "live"
+    assert body["price_basis"]["sources"] == ["testfeed"]
+    assert body["price_basis"]["last_known_symbols"] == []
 
 
 def test_current_portfolio_runs_slai_only_when_explicitly_requested(tmp_path: Path) -> None:
@@ -125,7 +126,7 @@ def test_current_portfolio_runs_slai_only_when_explicitly_requested(tmp_path: Pa
     reasoner = RecordingReasoner()
     app = create_app(
         Settings(environment="test", portfolio_file=portfolio_file),
-        market_provider=PortfolioMarketProvider(),
+        market_gateway=synthetic_gateway(PortfolioFeed()),
         financial_reasoner=reasoner,
     )
 
@@ -148,7 +149,7 @@ def test_current_portfolio_runs_slai_only_when_explicitly_requested(tmp_path: Pa
 def test_current_portfolio_returns_no_content_when_source_is_unconfigured() -> None:
     app = create_app(
         Settings(environment="test", portfolio_file=None),
-        market_provider=PortfolioMarketProvider(),
+        market_gateway=synthetic_gateway(PortfolioFeed()),
         financial_reasoner=RecordingReasoner(),
     )
 
@@ -157,3 +158,37 @@ def test_current_portfolio_returns_no_content_when_source_is_unconfigured() -> N
 
     assert response.status_code == 204
     assert response.content == b""
+
+
+def test_portfolio_is_valued_at_last_known_prices_and_says_so(tmp_path: Path) -> None:
+    portfolio_file = tmp_path / "portfolio.json"
+    write_portfolio(portfolio_file)
+    gateway = synthetic_gateway(PortfolioFeed())
+    app = create_app(
+        Settings(environment="test", portfolio_file=portfolio_file),
+        market_gateway=gateway,
+        financial_reasoner=RecordingReasoner(),
+    )
+    with TestClient(app) as client:
+        assert client.get("/api/v1/portfolio/current").json()["price_basis"]["mode"] == "live"
+        gateway._providers[0].get_quotes = DownFeed().get_quotes  # type: ignore[method-assign]
+        gateway._quotes.clear()
+        body = client.get("/api/v1/portfolio/current").json()
+
+    assert body["snapshot"]["positions"][0]["market_price"] == "120"
+    assert body["price_basis"]["mode"] == "last_known"
+    assert body["price_basis"]["last_known_symbols"] == ["ABC"]
+
+
+def test_portfolio_without_any_price_is_not_available_not_estimated(tmp_path: Path) -> None:
+    portfolio_file = tmp_path / "portfolio.json"
+    write_portfolio(portfolio_file)
+    app = create_app(
+        Settings(environment="test", portfolio_file=portfolio_file),
+        market_gateway=synthetic_gateway(DownFeed()),
+        financial_reasoner=RecordingReasoner(),
+    )
+    with TestClient(app) as client:
+        response = client.get("/api/v1/portfolio/current")
+    assert response.status_code == 503
+    assert "NOT AVAILABLE" in response.json()["detail"]

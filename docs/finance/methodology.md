@@ -15,7 +15,7 @@ a violated hard limit ⇒ SELL (held) or AVOID; a favourable score blocked by a 
 Actions are limited to BUY, HOLD, SELL, WATCH, AVOID, REDUCE and DCA.
 
 **Insufficient evidence** is returned (no action) when there are too few bars, the data is stale
-or has gaps, or the data is illustrative. Reasons are listed.
+or has gaps, or the only history available is saved (last-known) data rather than a fresh retrieval. Reasons are listed.
 
 ## Prediction (`engines/prediction`)
 The only forecast is an empirical-quantile *interval* of historical horizon returns, released only

@@ -20,6 +20,7 @@ class MarketQuoteResponse(BaseModel):
     change_percent: Decimal | None
     observed_at: datetime
     source: str
+    last_known: bool = False
 
     @classmethod
     def from_domain(cls, quote: PriceQuote) -> "MarketQuoteResponse":
@@ -35,6 +36,7 @@ class MarketQuoteResponse(BaseModel):
             change_percent=change_percent,
             observed_at=quote.observed_at,
             source=quote.source,
+            last_known=quote.last_known,
         )
 
 
@@ -43,6 +45,7 @@ class MarketOverviewResponse(BaseModel):
 
     generated_at: datetime
     quotes: list[MarketQuoteResponse]
+    unavailable: list[str]
     data_mode: str
 
     @classmethod
@@ -50,6 +53,7 @@ class MarketOverviewResponse(BaseModel):
         return cls(
             generated_at=overview.generated_at,
             quotes=[MarketQuoteResponse.from_domain(quote) for quote in overview.quotes],
+            unavailable=list(overview.unavailable),
             data_mode=overview.data_mode,
         )
 
@@ -86,6 +90,9 @@ class MarketHistoryResponse(BaseModel):
     interval: str
     generated_at: datetime
     data_mode: str
+    source: str | None = None
+    last_known: bool = False
+    saved_at: datetime | None = None
     bars: list[MarketBarResponse]
 
     @classmethod
@@ -96,5 +103,8 @@ class MarketHistoryResponse(BaseModel):
             interval=history.interval,
             generated_at=history.generated_at,
             data_mode=history.data_mode,
+            source=history.source,
+            last_known=history.last_known,
+            saved_at=history.saved_at,
             bars=[MarketBarResponse.from_domain(bar) for bar in history.bars],
         )

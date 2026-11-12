@@ -105,18 +105,11 @@ def test_closed_market_rejected_unless_policy_allows() -> None:
     )
 
 
-def test_illustrative_quote_blocked_when_policy_forbids_it() -> None:
-    d = run(order(), quote(illustrative=True), ExecutionPolicy(allow_illustrative=False))
+def test_last_known_quote_is_never_executable() -> None:
+    d = run(order(), quote(last_known=True))
     assert d.status is OrderStatus.REJECTED
-
-
-def test_illustrative_fill_is_flagged() -> None:
-    d = run(order(), quote(illustrative=True))
-    assert (
-        d.status is OrderStatus.FILLED
-        and d.execution is not None
-        and d.execution.illustrative is True
-    )
+    assert d.trade is None
+    assert codes(d) == {RejectionCode.QUOTE_LAST_KNOWN}
 
 
 def test_insufficient_cash_is_rejected() -> None:

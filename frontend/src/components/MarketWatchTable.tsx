@@ -9,6 +9,8 @@ import type {
 
 type Props = {
   quotes: MarketQuote[];
+  /** Symbols with no live and no saved quote: listed as NOT AVAILABLE, never filled in. */
+  unavailable?: string[];
   loading: boolean;
 };
 
@@ -35,6 +37,7 @@ function formatPrice(
 
 export function MarketWatchTable({
   quotes,
+  unavailable = [],
   loading,
 }: Props) {
   const [
@@ -99,10 +102,13 @@ export function MarketWatchTable({
         <div className="data-state">
           Loading market data…
         </div>
-      ) : rows.length === 0 ? (
+      ) : rows.length === 0 &&
+        (unavailable.length === 0 ||
+          filter !== "all") ? (
         <div className="data-state">
-          No market data is
-          available for this filter.
+          NOT AVAILABLE · no live or
+          saved market data for this
+          filter.
         </div>
       ) : (
         <div
@@ -207,6 +213,15 @@ export function MarketWatchTable({
                   className="watch-source"
                 >
                   {row.source}
+                  {row.last_known ? (
+                    <small
+                      className="last-known-note"
+                      data-testid="watch-last-known"
+                    >
+                      {" "}
+                      · last known
+                    </small>
+                  ) : null}
                 </span>
 
                 <span
@@ -223,6 +238,50 @@ export function MarketWatchTable({
               </div>
             );
           })}
+
+          {filter === "all"
+            ? unavailable.map(
+                (symbol) => (
+                  <div
+                    className="watch-row"
+                    role="row"
+                    key={`na:${symbol}`}
+                    data-testid="watch-unavailable"
+                  >
+                    <div
+                      className="watch-asset"
+                      role="cell"
+                    >
+                      <span className="ticker-badge">
+                        {symbol[0] ??
+                          "•"}
+                      </span>
+                      <span>
+                        <strong>
+                          {symbol}
+                        </strong>
+                      </span>
+                    </div>
+                    <strong
+                      className="not-available"
+                      role="cell"
+                    >
+                      NOT AVAILABLE
+                    </strong>
+                    <span role="cell">
+                      —
+                    </span>
+                    <span
+                      role="cell"
+                      className="watch-source"
+                    >
+                      none
+                    </span>
+                    <span aria-hidden="true" />
+                  </div>
+                ),
+              )
+            : null}
         </div>
       )}
     </section>

@@ -1,4 +1,4 @@
-"""Recommendation, prediction-validation and back-test behaviour on synthetic non-illustrative bars."""
+"""Recommendation, prediction-validation and back-test behaviour on synthetic bars."""
 
 from __future__ import annotations
 
@@ -55,19 +55,19 @@ def strategy(preset: str = DEFAULT_PRESET_ID):
 
 
 def inputs(
-    bars: list[OHLCVBar], illustrative: bool = False, mode: str = "live"
+    bars: list[OHLCVBar], last_known: bool = False, mode: str = "retrieved"
 ) -> RecommendationInputs:
     return RecommendationInputs(
         bars=bars,
         strategy=strategy(),
         generated_at=datetime(2026, 1, 1, tzinfo=UTC),
         data_mode=mode,
-        illustrative=illustrative,
+        last_known=last_known,
     )
 
 
-def test_illustrative_data_never_produces_a_recommendation() -> None:
-    report = build_report(inputs(make_bars(600), illustrative=True, mode="mock"))
+def test_last_known_data_never_produces_a_recommendation() -> None:
+    report = build_report(inputs(make_bars(600), last_known=True, mode="last_known"))
     assert report.status is ReportStatus.INSUFFICIENT_EVIDENCE
     assert report.action is None
     assert report.signal_score is None
@@ -88,8 +88,8 @@ def test_recommendation_uses_only_allowed_actions_and_bounded_score(preset: str)
             bars=make_bars(600),
             strategy=strategy(preset),
             generated_at=datetime(2026, 1, 1, tzinfo=UTC),
-            data_mode="live",
-            illustrative=False,
+            data_mode="retrieved",
+            last_known=False,
         )
     )
     if report.status is ReportStatus.RECOMMENDATION:

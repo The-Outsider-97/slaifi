@@ -40,10 +40,6 @@ export function MarketOverviewPage() {
   const dashboard =
     useMarketDashboard();
 
-  const isMock =
-    dashboard.overview?.data_mode ===
-    "mock";
-
   const primarySymbol =
     dashboard.overview?.quotes[0]
       ?.symbol ?? null;
@@ -53,37 +49,60 @@ export function MarketOverviewPage() {
       (bar) => Number(bar.close),
     ) ?? [];
 
-  const markets: SummaryMarket[] =
-    isMock
-      ? []
-      : (
-          dashboard.overview?.quotes ??
-          []
-        ).map((quote) => ({
-          key: quote.symbol,
-          name:
-            MARKET_NAMES[
-              quote.symbol.toUpperCase()
-            ] ?? quote.symbol,
-          value: Number(
-            quote.price,
-          ),
-          changePercent:
-            quote.change_percent ===
-            null
-              ? null
-              : Number(
-                  quote.change_percent,
-                ),
-          sparkline:
-            quote.symbol ===
-            primarySymbol
-              ? primarySparkline
-              : [],
-          source: quote.source,
-          observedAt:
-            quote.observed_at,
-        }));
+  const nameOf = (symbol: string) =>
+    MARKET_NAMES[symbol.toUpperCase()] ??
+    symbol;
+
+  const markets: SummaryMarket[] = [
+    ...(
+      dashboard.overview?.quotes ?? []
+    ).map((quote) => ({
+      key: quote.symbol,
+      name: nameOf(quote.symbol),
+      value: Number(quote.price),
+      changePercent:
+        quote.change_percent === null
+          ? null
+          : Number(
+              quote.change_percent,
+            ),
+      sparkline:
+        quote.symbol === primarySymbol
+          ? primarySparkline
+          : [],
+      source: quote.source,
+      observedAt: quote.observed_at,
+      lastKnown: quote.last_known,
+    })),
+    ...(
+      dashboard.overview
+        ?.unavailable ?? []
+    ).map((symbol) => ({
+      key: symbol,
+      name: nameOf(symbol),
+      value: null,
+      changePercent: null,
+      sparkline: [],
+      source: null,
+      observedAt: null,
+      lastKnown: false,
+    })),
+  ];
+
+  const mode =
+    dashboard.overview?.data_mode ??
+    null;
+
+  const snapshotLabel =
+    mode === "live"
+      ? "Live snapshot"
+      : mode === "delayed"
+        ? "Delayed snapshot"
+        : mode === "live_delay_unknown"
+          ? "Provider snapshot · delay unknown"
+          : mode === "last_known"
+            ? "Last known data"
+            : "NOT AVAILABLE";
 
   const currency =
     dashboard.overview?.quotes[0]
@@ -114,37 +133,54 @@ export function MarketOverviewPage() {
             </p>
           </div>
 
-          <span className="snapshot-note">
+          <span
+            className="snapshot-note"
+            data-testid="snapshot-note"
+          >
             {dashboard.loading
               ? "Loading market snapshot"
               : dashboard.overview
-                ? `${
-                    dashboard.overview
-                      .data_mode ===
-                    "live"
-                      ? "Market snapshot"
-                      : dashboard.overview
-                          .data_mode
-                  } · ${currency}`
-                : "Market data unavailable"}
+                ? mode === "unavailable"
+                  ? snapshotLabel
+                  : `${snapshotLabel} · ${currency}`
+                : "NOT AVAILABLE"}
           </span>
         </header>
 
-        {isMock ? (
+        {mode === "last_known" ? (
+          <div
+            className="inline-alert"
+            role="status"
+            data-testid="last-known-banner"
+          >
+            <strong>
+              Showing last known data.
+            </strong>{" "}
+            No market-data source could
+            be reached, so these are the
+            most recent real quotes
+            SLAIFI saved. Each shows
+            when it was observed.
+          </div>
+        ) : null}
+
+        {mode === "unavailable" &&
+        !dashboard.marketError ? (
           <div
             className="inline-alert"
             role="alert"
+            data-testid="unavailable-banner"
           >
             <strong>
-              Mock provider is configured.
+              NOT AVAILABLE.
             </strong>{" "}
-            Runtime financial values are
-            intentionally hidden. Set{" "}
-            <code>
-              SLAIFI_MARKET_PROVIDER=twelvedata
-            </code>{" "}
-            to use the real market-data
-            adapter.
+            No live quotes could be
+            retrieved and nothing has
+            been saved yet. Add at least
+            one free API key (see
+            Settings → Market data) and
+            reload. SLAIFI never shows
+            invented prices.
           </div>
         ) : null}
 
@@ -154,7 +190,7 @@ export function MarketOverviewPage() {
             role="alert"
           >
             <strong>
-              Market data unavailable.
+              NOT AVAILABLE.
             </strong>{" "}
             {dashboard.marketError}
           </div>
@@ -199,11 +235,9 @@ export function MarketOverviewPage() {
               ),
             )}
           </section>
-        ) : !dashboard.marketError &&
-          !isMock ? (
+        ) : !dashboard.marketError ? (
           <div className="data-state">
-            No current market quotes were
-            returned by the backend.
+            NOT AVAILABLE
           </div>
         ) : null}
 
@@ -247,10 +281,12 @@ export function MarketOverviewPage() {
         <div className="dashboard-grid dashboard-grid--secondary">
           <MarketWatchTable
             quotes={
-              isMock
-                ? []
-                : dashboard.overview
-                    ?.quotes ?? []
+              dashboard.overview
+                ?.quotes ?? []
+            }
+            unavailable={
+              dashboard.overview
+                ?.unavailable ?? []
             }
             loading={
               dashboard.loading

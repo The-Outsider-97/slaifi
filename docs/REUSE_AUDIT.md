@@ -9,7 +9,7 @@ SLAIFI is a modular monolith (FastAPI + React/Vite) with enforced layering
 
 | Area | Found | Gap |
 | --- | --- | --- |
-| Market data | provider port, mock + Twelve Data adapters, overview endpoint | no search, quote, OHLCV by interval/range, indicators, comparison, watchlist; mock data not clearly distinguished from live |
+| Market data | provider port, mock + Twelve Data adapters, overview endpoint (the mock adapter has since been deleted) | no search, quote, OHLCV by interval/range, indicators, comparison, watchlist; mock data not clearly distinguished from live |
 | Analysis | stateless market/portfolio/goal calculators fed by the caller | no recommendations, no validated prediction, no back-test |
 | Portfolio | pure valuation maths, one read-only "actual portfolio" JSON | no paper trading, no ledger, no persistence |
 | Strategies / goals | none (goal feasibility arithmetic only) | no strategy model, presets, constraints, goal tracking |
@@ -24,6 +24,7 @@ SLAIFI is a modular monolith (FastAPI + React/Vite) with enforced layering
 | Per-application data folder | `applications.tools.storage.default_data_dir("slaifi", "SLAIFI")` | `main._resolve_data_dir` |
 | Logging | `logs.logger.get_logger` | `main.py`, `api/errors.py`, adapters |
 | Reasoning | `src.agents.agent_factory.AgentFactory` + `SharedMemory` (reasoning agent) | `integrations/slai/reasoner.py` (existing) |
+| Last-known market cache (durable SQLite beside the ledger, separate file `market_cache.db`) | same `applications.tools.database.Database` | `infrastructure/market_data/sqlite_cache.py` (falls back to an in-memory cache if the host Database is unavailable) |
 | Safety screening of SLAI text | SLAI `SafetyAgent`, created through the **same** factory/shared runtime via `SlaiFinancialReasoner.agent_for` | `integrations/slai/safety.py` |
 
 New code was written only where SLAI has no equivalent: financial calculations,
@@ -48,3 +49,13 @@ deterministic engines never import them.
   `applications/slaifi` (matching `applications.tools.*`). Docs corrected and the CI guard now
   forbids the *singular* path instead.
 * `pyproject.toml` declared Python 3.10 while the code uses `StrEnum` and `datetime.UTC` → 3.11.
+
+## Real-data pass (no mock, three or more providers)
+
+* The mock provider, `SLAIFI_MARKET_PROVIDER`, `SLAIFI_MOCK_ILLUSTRATIVE_HISTORY` and
+  `SLAIFI_PAPER_ALLOW_ILLUSTRATIVE_EXECUTION` were removed; an architecture test fails if any
+  generated-data code appears in the package.
+* Five adapters (Twelve Data, Tiingo, FMP, Finnhub, Alpha Vantage), one class per API on a shared
+  `HttpMarketProvider` base, combined by `MultiSourceGateway` (failover, cooldown, free-tier
+  budgets, last-known cache). SLAI offers no market-data provider, so nothing was duplicated.
+* Test doubles (`tests/support`) are not part of the shipped package.

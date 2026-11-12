@@ -6,11 +6,16 @@ export type MarketQuote = {
   change_percent: string | null;
   observed_at: string;
   source: string;
+  /** True when this is the last real observation SLAIFI saved, not a fresh quote. */
+  last_known: boolean;
 };
 
 export type MarketOverview = {
   generated_at: string;
   quotes: MarketQuote[];
+  /** Symbols with neither a live nor a saved quote: shown as NOT AVAILABLE. */
+  unavailable: string[];
+  /** live | delayed | live_delay_unknown | last_known | unavailable */
   data_mode: string;
 };
 
@@ -29,7 +34,11 @@ export type MarketHistory = {
   asset_class: string;
   interval: string;
   generated_at: string;
+  /** retrieved | last_known | unavailable */
   data_mode: string;
+  source: string | null;
+  last_known: boolean;
+  saved_at: string | null;
   bars: MarketBar[];
 };
 
@@ -140,8 +149,16 @@ export type PortfolioRisk = {
   concentration_hhi: number | null;
 };
 
+export type PortfolioPriceBasis = {
+  mode: "live" | "last_known" | "none";
+  sources: string[];
+  last_known_symbols: string[];
+  oldest_observed_at: string | null;
+};
+
 export type PortfolioAnalysisResponse = {
   snapshot: PortfolioSnapshot;
+  price_basis: PortfolioPriceBasis | null;
   risk: PortfolioRisk | null;
   goals: unknown | null;
   reasoning: SlaiRuntimeStatus | null;

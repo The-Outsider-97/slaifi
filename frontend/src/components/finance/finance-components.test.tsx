@@ -8,22 +8,59 @@ import { PriceChart } from "./PriceChart";
 
 const base: Provenance = {
   mode: "live",
+  available: true,
   source: "twelvedata",
-  illustrative: false,
+  last_known: false,
+  saved_at: null,
   delayed: false,
   market_open: true,
   observed_at: "2026-05-01T15:00:00+00:00",
   retrieved_at: "2026-05-01T15:00:05+00:00",
   age_seconds: 12,
+  attempts: [],
   notes: [],
 };
 
 describe("FreshnessBadge", () => {
-  it("never labels mock or illustrative data as live", () => {
-    const label = freshnessLabel({ ...base, mode: "mock", illustrative: true });
-    expect(label.kind).toBe("mock");
-    expect(label.text).toContain("ILLUSTRATIVE");
+  it("says NOT AVAILABLE when there is neither live nor saved data", () => {
+    const label = freshnessLabel({ ...base, mode: "unavailable", available: false, source: null });
+    expect(label.kind).toBe("unavailable");
+    expect(label.text).toBe("NOT AVAILABLE");
+  });
+
+  it("labels saved data as last known and shows when it was observed, never as live", () => {
+    const label = freshnessLabel({
+      ...base,
+      mode: "last_known",
+      last_known: true,
+      saved_at: "2026-05-01T15:30:00+00:00",
+    });
+    expect(label.kind).toBe("last-known");
+    expect(label.text).toContain("LAST KNOWN");
+    expect(label.text).toContain("2026");
     expect(label.text).not.toContain("LIVE");
+  });
+
+  it("labels retrieved history with its source", () => {
+    const label = freshnessLabel({ ...base, mode: "retrieved" });
+    expect(label.kind).toBe("retrieved");
+    expect(label.text).toContain("twelvedata");
+  });
+
+  it("lists every source that was tried in the tooltip", () => {
+    const html = renderToStaticMarkup(
+      <FreshnessBadge
+        provenance={{
+          ...base,
+          attempts: [
+            { source: "twelvedata", outcome: "rate_limited", detail: "limit" },
+            { source: "tiingo", outcome: "ok", detail: null },
+          ],
+        }}
+      />,
+    );
+    expect(html).toContain("twelvedata: rate_limited");
+    expect(html).toContain("tiingo: ok");
   });
 
   it("flags delayed and delay-unknown data", () => {

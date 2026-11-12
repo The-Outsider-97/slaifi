@@ -145,10 +145,19 @@ function Positions({ view, onClose, closing }: { view: PortfolioView; onClose: (
               </div>
               <span role="cell">{quantity(p.quantity)}</span>
               <span role="cell">
-                <strong>{money(p.market_price, view.currency)}</strong>
-                <small className="block">
-                  {p.price_basis === "quote" ? "latest quote" : p.price_basis === "last_fill" ? "last fill (no quote)" : humanize(p.price_basis)}
-                  {p.stale_price ? " · stale" : ""}
+                {p.market_price === null ? (
+                  <strong className="not-available">NOT AVAILABLE</strong>
+                ) : (
+                  <strong>{money(p.market_price, view.currency)}</strong>
+                )}
+                <small className={p.price_basis === "last_known" ? "block last-known-note" : "block"}>
+                  {p.price_basis === "quote"
+                    ? "latest quote"
+                    : p.price_basis === "last_known"
+                      ? `LAST KNOWN price${p.price_provenance?.observed_at ? `, observed ${dateTime(p.price_provenance.observed_at)}` : ""}`
+                      : p.price_basis === "last_fill"
+                        ? "your last simulated fill (no quote available)"
+                        : humanize(p.price_basis)}
                 </small>
               </span>
               <strong role="cell">{money(p.market_value, view.currency)}</strong>
@@ -194,7 +203,7 @@ function Cash({ view, onDone }: { view: PortfolioView; onDone: () => void }) {
       <form className="inline-form" onSubmit={go("deposit")}>
         <label className="field field--grow">
           <span>Amount ({view.currency})</span>
-          <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="1000.00" />
+          <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="amount in dollars" />
         </label>
         <button className="secondary-button" type="submit" disabled={busy || !(Number(amount) > 0)}>Deposit</button>
         <button className="secondary-button" type="button" disabled={busy || !(Number(amount) > 0)} onClick={go("withdraw")}>Withdraw</button>

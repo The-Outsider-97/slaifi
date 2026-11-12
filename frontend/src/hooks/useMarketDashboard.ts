@@ -108,11 +108,6 @@ export function useMarketDashboard() {
     setAnalysis(null);
     setAnalysisError(null);
 
-    if (overview?.data_mode === "mock") {
-      setHistory(null);
-      setHistoryError("Historical chart disabled while the mock provider is configured.");
-      return;
-    }
     if (!primarySymbol || !primaryAssetClass) {
       setHistory(null);
       return;

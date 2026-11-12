@@ -91,7 +91,7 @@ class RecommendationReport:
     observation_count: int = 0
     last_bar_at: datetime | None = None
     data_mode: str = "unknown"
-    illustrative: bool = False
+    last_known: bool = False
     position_quantity: str | None = None
     model_versions: tuple[ModelVersion, ...] = ()
     summary: str = ""

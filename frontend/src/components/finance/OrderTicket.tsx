@@ -48,11 +48,6 @@ export function OutcomeDetails({ outcome, currency }: { outcome: OrderOutcome; c
           <div><dt>Quantity</dt><dd>{decision.trade ? quantity(decision.trade.quantity) : "see preview"}</dd></div>
         </dl>
       ) : null}
-      {ex?.illustrative ? (
-        <Notice tone="warning" title="Illustrative price">
-          This fill used mock prices, not real market prices.
-        </Notice>
-      ) : null}
       {ex?.market_open === false ? <Notice tone="warning">The market was closed when this quote was observed.</Notice> : null}
       {decision.warnings.map((w) => (
         <Notice key={w} tone="info">{w}</Notice>
@@ -158,7 +153,7 @@ export function OrderTicket({ portfolio, initialSymbol = "", onFilled }: Props) 
               inputMode="decimal"
               value={amount}
               onChange={(e) => { setAmount(e.target.value); edit(); }}
-              placeholder={mode === "quantity" ? "10" : "500.00"}
+              placeholder={mode === "quantity" ? "number of shares" : "amount in dollars"}
               required
             />
           </label>
@@ -176,13 +171,16 @@ export function OrderTicket({ portfolio, initialSymbol = "", onFilled }: Props) 
         <div className="stack ticket-result">
           <FreshnessBadge provenance={shown.decision.execution ? {
             mode: shown.decision.execution.data_mode,
+            available: true,
             source: shown.decision.execution.quote_source,
-            illustrative: shown.decision.execution.illustrative,
-            delayed: null,
+            last_known: false,
+            saved_at: null,
+            delayed: shown.decision.execution.data_mode === "delayed" ? true : null,
             market_open: shown.decision.execution.market_open,
             observed_at: shown.decision.execution.quote_observed_at,
             retrieved_at: null,
             age_seconds: null,
+            attempts: [],
             notes: [],
           } : null} />
           <OutcomeDetails outcome={shown} currency={portfolio.currency} />

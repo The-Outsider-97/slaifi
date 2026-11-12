@@ -32,31 +32,14 @@ from slaifi.application.portfolio import PortfolioGuidanceService
 from slaifi.application.recommendations import RecommendationService
 from slaifi.application.strategies import StrategyService
 from slaifi.core.config import Settings, get_settings
+from slaifi.domain.market import MarketCache, MarketGateway
 from slaifi.domain.market.models import AssetRef
-from slaifi.domain.market.provider import MarketDataProvider
 from slaifi.domain.paper import ExecutionPolicy
-from slaifi.infrastructure.market_data import MockMarketDataProvider, TwelveDataMarketDataProvider
+from slaifi.infrastructure.market_data import InMemoryMarketCache, build_gateway
 from slaifi.infrastructure.persistence import SqliteFinanceStore
 from slaifi.integrations.slai import SlaiFinancialReasoner, SlaiSafetyReviewer
 
 logger = get_logger("SLAIFI Composition")
-
-
-def _build_market_provider(settings: Settings) -> MarketDataProvider:
-    if settings.market_provider == "mock":
-        return MockMarketDataProvider(illustrative_history=settings.mock_illustrative_history)
-
-    if settings.market_provider == "twelvedata":
-        assert settings.market_api_key is not None
-        return TwelveDataMarketDataProvider(
-            api_key=settings.market_api_key.get_secret_value(),
-            timeout_seconds=settings.market_http_timeout_seconds,
-            quote_cache_ttl_seconds=settings.market_quote_cache_ttl_seconds,
-            history_cache_ttl_seconds=settings.market_history_cache_ttl_seconds,
-            data_delay_minutes=settings.market_data_delay_minutes,
-        )
-
-    raise RuntimeError(f"Unsupported SLAIFI market provider: {settings.market_provider}")
 
 
 def _resolve_data_dir(settings: Settings) -> Path:
@@ -67,6 +50,20 @@ def _resolve_data_dir(settings: Settings) -> Path:
     from applications.tools.storage import default_data_dir
 
     return Path(str(default_data_dir("slaifi", "SLAIFI")))
+
+
+def _open_market_cache(settings: Settings) -> MarketCache:
+    """Durable last-known cache next to the ledger; falls back to memory if it cannot be opened."""
+
+    try:
+        from slaifi.infrastructure.market_data.sqlite_cache import SqliteMarketCache
+
+        data_dir = _resolve_data_dir(settings)
+        data_dir.mkdir(parents=True, exist_ok=True)
+        return SqliteMarketCache(data_dir / "market_cache.db")
+    except Exception as exc:  # noqa: BLE001 - live data still works without a durable cache
+        logger.warning("Last-known market cache is in memory only (%s)", type(exc).__name__)
+        return InMemoryMarketCache()
 
 
 def _open_store(settings: Settings) -> tuple[FinanceStore, str]:
@@ -102,7 +99,7 @@ def _open_store(settings: Settings) -> tuple[FinanceStore, str]:
 
 def create_app(
     settings: Settings | None = None,
-    market_provider: MarketDataProvider | None = None,
+    market_gateway: MarketGateway | None = None,
     financial_reasoner: FinancialReasoner | None = None,
     *,
     slai_factory: Any = None,
@@ -113,10 +110,13 @@ def create_app(
     """Create and wire the SLAIFI application without coupling the financial core to SLAI."""
 
     runtime_settings = settings or get_settings()
-    owns_provider = market_provider is None
-    provider = (
-        market_provider if market_provider is not None else _build_market_provider(runtime_settings)
-    )
+    owns_gateway = market_gateway is None
+    market_cache: MarketCache | None = None
+    if market_gateway is None:
+        market_cache = _open_market_cache(runtime_settings)
+        gateway: MarketGateway = build_gateway(runtime_settings, cache=market_cache)
+    else:
+        gateway = market_gateway
 
     owns_reasoner = financial_reasoner is None
     reasoner = financial_reasoner or SlaiFinancialReasoner(
@@ -175,12 +175,13 @@ def create_app(
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("Closing the ledger failed: %s", exc)
 
-            if owns_provider:
-                close_provider = getattr(provider, "close", None)
-                if callable(close_provider):
-                    result = close_provider()
-                    if inspect.isawaitable(result):
-                        await result
+            if owns_gateway:
+                for closable in (gateway, market_cache):
+                    close_fn = getattr(closable, "close", None)
+                    if callable(close_fn):
+                        result = close_fn()
+                        if inspect.isawaitable(result):
+                            await result
 
     app = FastAPI(
         title="SLAIFI API",
@@ -200,14 +201,16 @@ def create_app(
     assets = tuple(AssetRef(symbol=symbol) for symbol in runtime_settings.market_overview_symbols)
     app.state.settings = runtime_settings
     app.state.financial_reasoner = reasoner
-    app.state.market_data_provider = provider
-    app.state.market_overview_service = GetMarketOverview(provider=provider, assets=assets)
-    app.state.market_history_service = GetMarketHistory(provider=provider)
+    app.state.market_data_provider = gateway
+    app.state.market_history_service = GetMarketHistory(gateway=gateway)
     app.state.market_analysis_service = AnalyzeMarketSeries(reasoner=reasoner)
     app.state.portfolio_analysis_service = AnalyzePortfolio(reasoner=reasoner)
     app.state.goal_evaluation_service = EvaluateFinancialGoal(reasoner=reasoner)
 
-    market_service = MarketDataService(provider, max_bars=runtime_settings.api_max_market_bars)
+    market_service = MarketDataService(gateway, max_bars=runtime_settings.api_max_market_bars)
+    app.state.market_overview_service = GetMarketOverview(
+        gateway=gateway, assets=assets, classify=market_service.resolve_asset
+    )
     strategy_service = StrategyService(store)
     strategy_service.ensure_default()
     paper_service = PaperTradingService(
@@ -217,7 +220,6 @@ def create_app(
         policy=ExecutionPolicy(
             max_quote_age_seconds=runtime_settings.paper_max_quote_age_seconds,
             allow_closed_market=runtime_settings.paper_allow_closed_market_execution,
-            allow_illustrative=runtime_settings.paper_allow_illustrative_execution,
         ),
         storage_status=storage_status,
     )
@@ -230,7 +232,6 @@ def create_app(
     )
     app.state.finance_store = store
     app.state.storage_status = storage_status
-    app.state.data_mode = market_service.data_mode
     app.state.market_data_service = market_service
     app.state.strategy_service = strategy_service
     app.state.paper_service = paper_service
@@ -250,9 +251,9 @@ def create_app(
     app.include_router(api_router)
 
     logger.info(
-        "SLAIFI composition complete | env=%s | market_provider=%s | slai_enabled=%s | slai_quality=%s",
+        "SLAIFI composition complete | env=%s | market_sources=%s | slai_enabled=%s | slai_quality=%s",
         runtime_settings.environment,
-        runtime_settings.market_provider,
+        ",".join(p.name for p in gateway.provider_status() if p.configured) or "none-configured",
         runtime_settings.slai_enabled,
         runtime_settings.slai_quality_enabled,
     )

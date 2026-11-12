@@ -36,11 +36,19 @@ API
 Frontend / user
 ```
 
-The initial vertical slice stops after normalization and application orchestration:
+Market data flows through one gateway that tries real providers in order and falls back to the
+last real observation it saved:
 
 ```text
-Mock provider → normalized PriceQuote → GetMarketOverview → FastAPI → Home dashboard
+Twelve Data → Tiingo → FMP → Finnhub → Alpha Vantage        (each: own key, own free-tier budget)
+        ↓ first source that answers
+MultiSourceGateway ── saves every real result ──▶ market_cache.db (SQLite, last known data)
+        ↓ every source failed  → saved observation (last_known=true, with its time)
+        ↓ nothing saved        → empty result (the UI shows NOT AVAILABLE)
+normalized PriceQuote / OHLCVBar → application services → FastAPI → React
 ```
+
+Only real provider data is ever saved or returned.
 
 ## Provenance rule
 

@@ -2,7 +2,7 @@
 
 Money and quantities are strings (exact decimals); rates are floats (``0.05`` = 5%). Every
 response that carries market data includes ``provenance`` so a client can always show whether it
-is looking at mock, delayed or live data and how old an observation is.
+is looking at live, delayed, last-known or unavailable data and how old an observation is.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from slaifi.application.recommendations import (
 from slaifi.domain.assets import AssetId
 from slaifi.domain.goals import GoalFeasibilityReport, GoalSpec
 from slaifi.domain.ledger import AuditEntry, Proposal, WatchlistItem
-from slaifi.domain.market import InstrumentInfo, OHLCVBar
+from slaifi.domain.market import InstrumentInfo, OHLCVBar, ProviderCheck, ProviderStatus
 from slaifi.domain.paper import OrderDecision, PaperPortfolio
 from slaifi.domain.recommendations import RecommendationReport
 from slaifi.domain.strategies import StrategyProfile
@@ -59,13 +59,18 @@ def asset(a: AssetId) -> dict[str, Any]:
 def provenance(p: DataProvenance) -> dict[str, Any]:
     return {
         "mode": p.mode,
+        "available": p.available,
         "source": p.source,
-        "illustrative": p.illustrative,
+        "last_known": p.last_known,
+        "saved_at": t(p.saved_at),
         "delayed": p.delayed,
         "market_open": p.market_open,
         "observed_at": t(p.observed_at),
         "retrieved_at": t(p.retrieved_at),
         "age_seconds": p.age_seconds,
+        "attempts": [
+            {"source": a.source, "outcome": a.outcome, "detail": a.detail} for a in p.attempts
+        ],
         "notes": list(p.notes),
     }
 
@@ -76,7 +81,6 @@ def instrument(i: InstrumentInfo) -> dict[str, Any]:
         "name": i.name,
         "country": i.country,
         "instrument_type": i.instrument_type,
-        "illustrative": i.illustrative,
     }
 
 
@@ -91,15 +95,58 @@ def search(view: SearchView) -> dict[str, Any]:
 
 def quote(view: QuoteView) -> dict[str, Any]:
     q = view.quote
+    if q is None:  # nothing live and nothing saved: the UI shows NOT AVAILABLE
+        return {
+            "asset": asset(view.asset),
+            "available": False,
+            "price": None,
+            "currency": None,
+            "change_rate": None,
+            "previous_close": None,
+            "observed_at": None,
+            "source": None,
+            "last_known": False,
+            "provenance": provenance(view.provenance),
+        }
     return {
         "asset": asset(q.asset),
+        "available": True,
         "price": d(q.price),
         "currency": str(q.currency),
         "change_rate": q.change_rate,
         "previous_close": d(q.previous_close),
         "observed_at": t(q.observed_at),
         "source": q.source,
+        "last_known": q.last_known,
         "provenance": provenance(view.provenance),
+    }
+
+
+def provider_status(s: ProviderStatus) -> dict[str, Any]:
+    return {
+        "name": s.name,
+        "label": s.label,
+        "configured": s.configured,
+        "capabilities": list(s.capabilities),
+        "intervals": list(s.intervals),
+        "state": s.state,
+        "cooldown_until": t(s.cooldown_until),
+        "last_success_at": t(s.last_success_at),
+        "last_error": s.last_error,
+        "last_error_at": t(s.last_error_at),
+        "calls_last_minute": s.calls_last_minute,
+        "calls_today": s.calls_today,
+        "free_tier_note": s.free_tier_note,
+    }
+
+
+def provider_check(c: ProviderCheck) -> dict[str, Any]:
+    return {
+        "name": c.name,
+        "configured": c.configured,
+        "ok": c.ok,
+        "detail": c.detail,
+        "latency_ms": c.latency_ms,
     }
 
 
@@ -296,7 +343,7 @@ def report(r: RecommendationReport) -> dict[str, Any]:
         "observation_count": r.observation_count,
         "last_bar_at": t(r.last_bar_at),
         "data_mode": r.data_mode,
-        "illustrative": r.illustrative,
+        "last_known": r.last_known,
         "position_quantity": r.position_quantity,
         "model_versions": [{"name": m.name, "version": m.version} for m in r.model_versions],
         "summary": r.summary,
@@ -441,7 +488,6 @@ def portfolio_view(v: PortfolioView) -> dict[str, Any]:
         "slippage_cost": d(v.slippage_cost),
         "positions": positions,
         "valuation_complete": v.valuation_complete,
-        "illustrative_fill_count": v.illustrative_fill_count,
         "simulated": True,
         "warnings": list(v.warnings),
     }
@@ -478,7 +524,6 @@ def decision(dec: OrderDecision) -> dict[str, Any]:
                 "quote_observed_at": t(ex.quote_observed_at),
                 "quote_source": ex.quote_source,
                 "data_mode": ex.data_mode,
-                "illustrative": ex.illustrative,
                 "executed_at": t(ex.executed_at),
                 "market_open": ex.market_open,
                 "notes": list(ex.notes),

@@ -112,7 +112,7 @@ def report_evidence(report: RecommendationReport) -> dict[str, Any]:
         else None,
         "observations": report.observation_count,
         "data_mode": report.data_mode,
-        "illustrative_data": report.illustrative,
+        "last_known_data": report.last_known,
         "notes": list(report.notes),
     }
 
@@ -171,9 +171,11 @@ class RecommendationService:
                 action=None,
                 signal_score=None,
                 risk_level=None,
-                insufficient_reasons=("No historical data is available for this instrument.",),
+                insufficient_reasons=(
+                    "NOT AVAILABLE: no historical data could be retrieved for this instrument.",
+                ),
                 data_mode=history.provenance.mode,
-                illustrative=history.provenance.illustrative,
+                last_known=history.provenance.last_known,
                 model_versions=(ModelVersion("slaifi_signal_rules", "1.0.0"),),
                 summary="Insufficient evidence: no historical data is available for this instrument.",
             )
@@ -185,7 +187,7 @@ class RecommendationService:
                     generated_at=now,
                     interval="1day",
                     data_mode=history.provenance.mode,
-                    illustrative=history.provenance.illustrative,
+                    last_known=history.provenance.last_known,
                     snapshot=snapshot,
                     portfolio_drawdown=drawdown,
                 )
@@ -233,10 +235,10 @@ class RecommendationService:
             message = None
         except InsufficientDataError as exc:
             result, message = None, exc.message
-        if history.provenance.illustrative:
+        if history.provenance.last_known:
             message = (
                 message + " " if message else ""
-            ) + "This simulation ran on illustrative data and says nothing about real markets."
+            ) + "This simulation used last-known history because live sources could not be reached."
         return BacktestView(asset.symbol, result, history.provenance, strategy, message)
 
     async def _explain(

@@ -7,6 +7,7 @@ import { MarketOverviewPage } from "./MarketOverviewPage";
 const liveOverview = {
   generated_at: "2026-10-05T12:00:00+00:00",
   data_mode: "live",
+  unavailable: [] as string[],
   quotes: [
     {
       symbol: "SPY",
@@ -16,6 +17,7 @@ const liveOverview = {
       change_percent: "0.42",
       observed_at: "2026-10-05T12:00:00+00:00",
       source: "twelvedata",
+      last_known: false,
     },
     {
       symbol: "QQQ",
@@ -25,14 +27,32 @@ const liveOverview = {
       change_percent: "-0.18",
       observed_at: "2026-10-05T12:00:00+00:00",
       source: "twelvedata",
+      last_known: false,
     },
   ],
 };
 
-const mockOverview = {
+const lastKnownOverview = {
   ...liveOverview,
-  data_mode: "mock",
-  quotes: liveOverview.quotes.map((quote) => ({ ...quote, source: "mock" })),
+  data_mode: "last_known",
+  quotes: liveOverview.quotes.map((quote) => ({
+    ...quote,
+    observed_at: "2026-10-02T20:00:00+00:00",
+    last_known: true,
+  })),
+};
+
+const partialOverview = {
+  ...liveOverview,
+  quotes: liveOverview.quotes.slice(0, 1),
+  unavailable: ["QQQ"],
+};
+
+const nothingOverview = {
+  ...liveOverview,
+  data_mode: "unavailable",
+  quotes: [] as typeof liveOverview.quotes,
+  unavailable: ["SPY", "QQQ"],
 };
 
 const history = {
@@ -40,7 +60,10 @@ const history = {
   asset_class: "etf",
   interval: "1day",
   generated_at: "2026-10-05T12:00:00+00:00",
-  data_mode: "live",
+  data_mode: "retrieved",
+  source: "twelvedata",
+  last_known: false,
+  saved_at: null,
   bars: [
     {
       start_at: "2026-10-03T00:00:00+00:00",
@@ -129,7 +152,7 @@ function jsonResponse(data: unknown, status = 200) {
 }
 
 function installFetch(options: {
-  overview?: typeof liveOverview | typeof mockOverview;
+  overview?: typeof liveOverview | typeof lastKnownOverview | typeof partialOverview | typeof nothingOverview;
   slai?: typeof unavailableStatus | typeof availableStatus;
   marketError?: boolean;
   historyError?: boolean;
@@ -189,17 +212,39 @@ describe("MarketOverviewPage", () => {
 
     expect(await screen.findByText("101.25")).toBeInTheDocument();
     expect(screen.getByText("202.50")).toBeInTheDocument();
-    expect(screen.getByText("Market snapshot · USD")).toBeInTheDocument();
+    expect(screen.getByText("Live snapshot · USD")).toBeInTheDocument();
     expect(screen.queryByText("5,782.76")).not.toBeInTheDocument();
   });
 
-  it("hides mock financial values instead of presenting them as real", async () => {
-    installFetch({ overview: mockOverview });
+  it("shows last known quotes clearly labelled with their observation time", async () => {
+    installFetch({ overview: lastKnownOverview });
     render(<MarketOverviewPage />);
 
-    expect(await screen.findByText(/Mock provider is configured/i)).toBeInTheDocument();
-    expect(screen.queryByText("101.25")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("last-known-banner")).toHaveTextContent(/last known data/i);
+    expect(screen.getByText("101.25")).toBeInTheDocument();
+    expect(screen.getAllByTestId("last-known-note")).toHaveLength(2);
+    expect(screen.getByTestId("snapshot-note")).toHaveTextContent("Last known data");
+    expect(screen.getAllByTestId("watch-last-known").length).toBeGreaterThan(0);
+  });
+
+  it("says NOT AVAILABLE for a symbol with no live or saved price, and keeps the rest", async () => {
+    installFetch({ overview: partialOverview });
+    render(<MarketOverviewPage />);
+
+    expect(await screen.findByText("101.25")).toBeInTheDocument();
+    expect(screen.getByTestId("summary-unavailable")).toHaveTextContent("NOT AVAILABLE");
+    expect(screen.getByTestId("watch-unavailable")).toHaveTextContent("QQQ");
     expect(screen.queryByText("202.50")).not.toBeInTheDocument();
+  });
+
+  it("says NOT AVAILABLE everywhere when nothing live or saved exists", async () => {
+    installFetch({ overview: nothingOverview, historyError: true });
+    render(<MarketOverviewPage />);
+
+    expect(await screen.findByTestId("unavailable-banner")).toHaveTextContent("NOT AVAILABLE");
+    expect(screen.getAllByTestId("summary-unavailable")).toHaveLength(2);
+    expect(screen.getByTestId("snapshot-note")).toHaveTextContent("NOT AVAILABLE");
+    expect(screen.queryByText(/\d{2,3}\.\d{2}/)).not.toBeInTheDocument();
   });
 
   it("requests SLAI reasoning only after real evidence exists and the user asks", async () => {
@@ -223,7 +268,7 @@ describe("MarketOverviewPage", () => {
     installFetch({ marketError: true });
     render(<MarketOverviewPage />);
 
-    expect(await screen.findByText(/Market data unavailable/i)).toBeInTheDocument();
+    expect((await screen.findAllByText(/NOT AVAILABLE/i)).length).toBeGreaterThan(0);
     expect(screen.queryByText("5,782.76")).not.toBeInTheDocument();
     expect(screen.queryByText(/illustrative fallback/i)).not.toBeInTheDocument();
   });

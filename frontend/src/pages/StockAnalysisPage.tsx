@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 
 import { AppShell } from "../components/AppShell";
 import { Explained } from "../components/finance/Explained";
-import { FreshnessBadge } from "../components/finance/FreshnessBadge";
+import { FreshnessBadge, NOT_AVAILABLE } from "../components/finance/FreshnessBadge";
 import { Empty, Loading, Notice } from "../components/finance/Notice";
 import { PageHeading } from "../components/finance/PageHeading";
 import { PriceChart, type ChartKind } from "../components/finance/PriceChart";
@@ -87,7 +87,6 @@ function SymbolSearch({ onPick }: { onPick: (symbol: string) => void }) {
                 <span>{item.name ?? "Unnamed instrument"}</span>
                 <small>
                   {[item.asset.exchange, item.instrument_type].filter(Boolean).join(" · ")}
-                  {item.illustrative ? " · illustrative" : ""}
                 </small>
               </button>
             </li>
@@ -428,9 +427,22 @@ export function StockAnalysisPage({ initialSymbol }: { initialSymbol: string | n
           </div>
 
           <div className="performance-metric">
-            <strong>{lastQuote ? money(lastQuote.price, lastQuote.currency) : quote.loading ? "…" : "—"}</strong>
-            <span className={`market-change market-change--${direction(change)}`}>{signedPercent(change)}</span>
-            <small>{lastQuote ? `Quote observed ${dateTime(lastQuote.observed_at)} · ${lastQuote.source}` : quote.error ?? ""}</small>
+            {lastQuote?.available && lastQuote.price !== null ? (
+              <strong>{money(lastQuote.price, lastQuote.currency ?? "USD")}</strong>
+            ) : quote.loading && !lastQuote ? (
+              <strong>…</strong>
+            ) : (
+              <strong className="not-available" data-testid="quote-not-available">{NOT_AVAILABLE}</strong>
+            )}
+            {lastQuote?.available ? (
+              <span className={`market-change market-change--${direction(change)}`}>{signedPercent(change)}</span>
+            ) : null}
+            <small>
+              {lastQuote?.available
+                ? `${lastQuote.last_known ? "LAST KNOWN quote, observed" : "Quote observed"} ${dateTime(lastQuote.observed_at)} · ${lastQuote.source}`
+                : quote.error ?? ""}
+            </small>
+            {lastQuote ? <FreshnessBadge provenance={lastQuote.provenance} /> : null}
           </div>
 
           <div className="overlay-toggles" role="group" aria-label="Indicators">
@@ -469,7 +481,11 @@ export function StockAnalysisPage({ initialSymbol }: { initialSymbol: string | n
                   label={`${symbol} price`}
                 />
               ) : (
-                <Empty title="No history for this range">The provider returned too few bars to draw a chart.</Empty>
+                <Empty title={series.data.provenance.mode === "unavailable" ? NOT_AVAILABLE : "No history for this range"}>
+                  {series.data.provenance.mode === "unavailable"
+                    ? "No data source returned history for this symbol and nothing is saved. SLAIFI does not draw invented prices."
+                    : "Too few bars to draw a chart."}
+                </Empty>
               )
             ) : null}
           </div>
@@ -480,7 +496,7 @@ export function StockAnalysisPage({ initialSymbol }: { initialSymbol: string | n
           ))}
           {series.data ? (
             <p className="source-note">
-              {series.data.quality.count} bars · {series.data.quality.gap_count} gap(s) · source {series.data.provenance.source}. Missing bars are never filled in.
+              {series.data.quality.count} bars · {series.data.quality.gap_count} gap(s) · source {series.data.provenance.source ?? "none"}{series.data.provenance.last_known ? " (LAST KNOWN, saved " + dateTime(series.data.provenance.saved_at) + ")" : ""}. Missing bars are never filled in.
             </p>
           ) : null}
         </section>

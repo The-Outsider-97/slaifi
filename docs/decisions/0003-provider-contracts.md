@@ -13,3 +13,12 @@ Provider SDK objects and naming conventions are unstable dependencies. Normaliza
 ## Constraint
 
 Raw responses may be persisted for audit/debug purposes, but raw vendor payloads must not become the public domain API.
+
+## Consequence (multi-source gateway)
+
+Failover is implemented as a `MultiSourceGateway` that composes one adapter per vendor behind the
+domain `MarketGateway` contract: ordered failover, per-source cooldown and free-tier request
+budgets, a durable cache of the last real observations, and per-result provenance (source, attempts,
+`last_known`). Adapters are written against the vendors' documented response shapes; the in-app
+*Check providers* action verifies them against the live services with the user's own keys. No
+generated data exists in the package; tests use doubles that live only under `tests/`.

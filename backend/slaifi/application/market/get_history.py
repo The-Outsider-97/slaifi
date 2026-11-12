@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 
 from slaifi.core.utils.errors import ValidationError
 from slaifi.domain.assets import AssetId
+from slaifi.domain.market import MarketGateway
 from slaifi.domain.market.models import OHLCVBar
-from slaifi.domain.market.provider import MarketDataProvider
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,14 +15,17 @@ class MarketHistory:
     interval: str
     bars: tuple[OHLCVBar, ...]
     generated_at: datetime
-    data_mode: str
+    data_mode: str  # retrieved | last_known | unavailable
+    source: str | None = None
+    last_known: bool = False
+    saved_at: datetime | None = None
 
 
 class GetMarketHistory:
-    """Retrieve normalized historical bars from the configured provider."""
+    """Retrieve normalized historical bars through the multi-source gateway."""
 
-    def __init__(self, provider: MarketDataProvider) -> None:
-        self._provider = provider
+    def __init__(self, gateway: MarketGateway) -> None:
+        self._gateway = gateway
 
     async def execute(
         self,
@@ -34,30 +37,26 @@ class GetMarketHistory:
     ) -> MarketHistory:
         if start_at.tzinfo is None or start_at.utcoffset() is None:
             raise ValidationError("start_at must be timezone-aware")
-
         if end_at.tzinfo is None or end_at.utcoffset() is None:
             raise ValidationError("end_at must be timezone-aware")
-
         if end_at <= start_at:
             raise ValidationError("end_at must be later than start_at")
-
-        bars = tuple(
-            await self._provider.get_bars(
-                asset,
-                start_at=start_at,
-                end_at=end_at,
-                interval=interval,
-            )
+        fetch = await self._gateway.fetch_bars(
+            asset, start_at=start_at, end_at=end_at, interval=interval
         )
-
+        if not fetch.bars:
+            mode = "unavailable"
+        elif fetch.info.last_known:
+            mode = "last_known"
+        else:
+            mode = "retrieved"
         return MarketHistory(
             asset=asset,
             interval=interval,
-            bars=bars,
+            bars=tuple(fetch.bars),
             generated_at=datetime.now(UTC),
-            data_mode=getattr(
-                self._provider,
-                "data_mode",
-                "unknown",
-            ),
+            data_mode=mode,
+            source=fetch.info.source,
+            last_known=fetch.info.last_known,
+            saved_at=fetch.info.saved_at,
         )

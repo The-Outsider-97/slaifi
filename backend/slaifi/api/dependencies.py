@@ -11,7 +11,7 @@ from slaifi.application.market import GetMarketHistory
 from slaifi.application.market.get_overview import GetMarketOverview
 from slaifi.core.config import Settings
 from slaifi.core.utils.errors import ValidationError
-from slaifi.domain.market.provider import MarketDataProvider
+from slaifi.domain.market import MarketGateway
 
 
 def _state_value(request: Request, name: str) -> object:
@@ -33,8 +33,8 @@ def get_market_history_service(request: Request) -> GetMarketHistory:
     return cast(GetMarketHistory, _state_value(request, "market_history_service"))
 
 
-def get_market_data_provider(request: Request) -> MarketDataProvider:
-    return cast(MarketDataProvider, _state_value(request, "market_data_provider"))
+def get_market_gateway(request: Request) -> MarketGateway:
+    return cast(MarketGateway, _state_value(request, "market_data_provider"))
 
 
 def get_portfolio_analysis_service(request: Request) -> AnalyzePortfolio:

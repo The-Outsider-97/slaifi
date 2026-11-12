@@ -61,17 +61,15 @@ async def meta(market: Market) -> dict[str, Any]:
         "ranges": list(RANGES),
         "overlays": list(OVERLAY_NAMES),
         "data_mode": market.data_mode,
-        "provenance": out.provenance(market.provenance()),
+        "configured": market.configured,
+        "providers": [out.provider_status(p) for p in market.provider_status()],
     }
 
 
 @router.get("/quote/{symbol}")
 async def quote(symbol: str, market: Market, exchange: str | None = None) -> dict[str, Any]:
     asset = await market.resolve_asset(symbol, exchange=exchange)
-    view = await market.quote(asset)
-    if view is None:
-        raise ValidationError(f"no quote is available for {asset.symbol} right now")
-    return out.quote(view)
+    return out.quote(await market.quote(asset))
 
 
 @router.get("/series/{symbol}")
@@ -128,12 +126,12 @@ async def watchlist(store: Store, market: Market) -> dict[str, Any]:
     if items:
         try:
             for view in await market.quotes([i.asset for i in items]):
-                quotes[view.quote.asset.symbol] = view
+                quotes[view.asset.symbol] = view
         except Exception:  # noqa: BLE001 - a quote outage must not hide the user's own list
             quotes = {}
     return {
         "items": [out.watchlist_item(i, quotes.get(i.asset.symbol)) for i in items],
-        "provenance": out.provenance(market.provenance()),
+        "configured": market.configured,
     }
 
 

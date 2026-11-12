@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 from fastapi import APIRouter
 from fastapi.testclient import TestClient
+from tests.support import synthetic_gateway
 
 from slaifi.application.contracts import (
     ReasoningRequest,
@@ -21,9 +22,16 @@ from slaifi.core.utils.errors import (
     MarketDataUnavailableError,
     SymbolNotFoundError,
 )
-from slaifi.main import create_app
+from slaifi.main import create_app as _create_app
 
 H = {"X-SLAIFI-Client": "test"}
+
+
+def create_app(s: Settings, **kw: Any) -> Any:
+    """The real application over a real gateway whose only provider is the deterministic test feed."""
+
+    kw.setdefault("market_gateway", synthetic_gateway())
+    return _create_app(s, **kw)
 
 
 def settings(tmp: Path, **kw: Any) -> Settings:
@@ -125,10 +133,12 @@ def test_order_must_specify_exactly_one_size(client: TestClient) -> None:
     assert r.status_code == 422
 
 
-def test_unknown_symbol_is_404_not_a_fabricated_quote(client: TestClient) -> None:
-    r = client.get("/api/v1/market/quote/NOSUCH")
-    assert r.status_code == 404
-    assert r.json()["error"] in {"symbol_not_found", "not_found"}
+def test_symbol_with_no_data_is_not_available_never_fabricated(client: TestClient) -> None:
+    body = client.get("/api/v1/market/quote/NOSUCH").json()
+    assert body["available"] is False
+    assert body["price"] is None and body["observed_at"] is None and body["source"] is None
+    assert body["provenance"]["mode"] == "unavailable"
+    assert body["provenance"]["attempts"][0]["source"] == "testfeed"
 
 
 def test_reset_needs_explicit_confirmation(client: TestClient) -> None:
@@ -505,7 +515,8 @@ def test_watchlist_roundtrip(client: TestClient) -> None:
     )
     items = client.get("/api/v1/market/watchlist").json()["items"]
     assert [i["asset"]["symbol"] for i in items] == ["KO"]
-    assert items[0]["quote"]["provenance"]["illustrative"] is True
+    assert items[0]["quote"]["provenance"]["mode"] == "live"
+    assert "illustrative" not in items[0]["quote"]["provenance"]
     assert client.delete("/api/v1/market/watchlist/KO", headers=H).json() == {"removed": True}
     assert client.get("/api/v1/market/watchlist").json()["items"] == []
 
@@ -545,18 +556,22 @@ def test_goal_with_invalid_enum_is_422(client: TestClient) -> None:
     assert r.status_code == 422
 
 
-def test_mock_data_is_never_labelled_live(client: TestClient) -> None:
+def test_market_responses_carry_real_provenance_and_no_mock_labels(client: TestClient) -> None:
     q = client.get("/api/v1/market/quote/KO").json()
-    assert q["provenance"]["mode"] == "mock" and q["provenance"]["illustrative"] is True
+    assert q["provenance"]["mode"] == "live" and q["provenance"]["source"] == "testfeed"
+    assert q["last_known"] is False and "illustrative" not in q["provenance"]
     s = client.get("/api/v1/market/series/KO", params={"range": "3M"}).json()
-    assert s["provenance"]["mode"] == "mock"
+    assert s["provenance"]["mode"] == "retrieved" and s["bars"]
     meta = client.get("/api/v1/market/meta").json()
-    assert meta["data_mode"] == "mock" and meta["intervals"] == ["1day"]
+    assert meta["intervals"] == ["1day"] and meta["configured"] is True
+    assert [p["name"] for p in meta["providers"]] == ["testfeed"]
+    assert "mock" not in str(meta).lower()
 
 
 def test_unsupported_interval_is_explained_not_faked(client: TestClient) -> None:
     s = client.get("/api/v1/market/series/KO", params={"interval": "1h", "range": "1M"}).json()
-    assert s["bars"] == [] and any("not available" in n for n in s["notes"])
+    assert s["bars"] == [] and s["provenance"]["mode"] == "unavailable"
+    assert any("not offered" in n for n in s["notes"])
 
 
 def test_invalid_range_and_overlay_are_422(client: TestClient) -> None:

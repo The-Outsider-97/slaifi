@@ -23,7 +23,7 @@ class RejectionCode(StrEnum):
     QUOTE_UNAVAILABLE = "quote_unavailable"
     QUOTE_STALE = "quote_stale"
     MARKET_CLOSED = "market_closed"
-    ILLUSTRATIVE_PRICE_NOT_ALLOWED = "illustrative_price_not_allowed"
+    QUOTE_LAST_KNOWN = "quote_last_known"
     CURRENCY_MISMATCH = "currency_mismatch"
     INSUFFICIENT_CASH = "insufficient_cash"
     INSUFFICIENT_POSITION = "insufficient_position"
@@ -38,7 +38,6 @@ class ExecutionPolicy:
 
     max_quote_age_seconds: int = 900
     allow_closed_market: bool = False
-    allow_illustrative: bool = True
     quantity_decimals: int = 4
 
     def __post_init__(self) -> None:
@@ -102,7 +101,6 @@ class ExecutionDetails:
     quote_observed_at: datetime
     quote_source: str
     data_mode: str
-    illustrative: bool
     executed_at: datetime
     market_open: bool | None
     notes: tuple[str, ...] = ()

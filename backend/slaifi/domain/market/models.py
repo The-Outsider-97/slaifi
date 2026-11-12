@@ -26,8 +26,9 @@ class PriceQuote:
     is_market_open: bool | None = None
     delayed: bool | None = None
     previous_close: Decimal | None = None
-    # True for synthetic demo data (mock provider). Illustrative quotes are never market data.
-    illustrative: bool = False
+    # True when this is the most recent quote SLAIFI saved locally because no provider could be
+    # reached. ``observed_at`` is then the original observation time, never the retrieval time.
+    last_known: bool = False
 
     def __post_init__(self) -> None:
         if self.price <= 0:
@@ -53,7 +54,6 @@ class InstrumentInfo:
     name: str
     country: str | None = None
     instrument_type: str | None = None
-    illustrative: bool = False
 
     def __post_init__(self) -> None:
         if not self.name.strip():

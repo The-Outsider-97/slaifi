@@ -1,4 +1,4 @@
-"""End-to-end workflow through the HTTP API on the mock provider (illustrative data).
+"""End-to-end workflow through the HTTP API over the deterministic test feed (no network, no keys).
 
 Mirrors the twelve-step acceptance workflow: market data → strategy → portfolio → recommendation
 → simulated trading → advisor → goals → guidance → restart persistence → reset.
@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from tests.support import synthetic_gateway
 
 from slaifi.core.config import Settings
 from slaifi.main import create_app
@@ -20,7 +21,9 @@ H = {"X-SLAIFI-Client": "test"}
 
 def _client(data_dir: Path, **overrides: object) -> TestClient:
     settings = Settings(environment="test", data_dir=data_dir, slai_enabled=False, **overrides)  # type: ignore[arg-type]
-    return TestClient(create_app(settings), raise_server_exceptions=False)
+    return TestClient(
+        create_app(settings, market_gateway=synthetic_gateway()), raise_server_exceptions=False
+    )
 
 
 @pytest.fixture()
@@ -41,15 +44,18 @@ def test_twelve_step_workflow_with_restart(data_dir: Path) -> None:
         assert status["storage_status"] == "ok"
         assert status["audit_chain_intact"] is True
         assert status["real_money_trading"] == "unavailable"
-        assert status["data_mode"] == "mock"
+        assert [p["name"] for p in status["market_providers"]] == ["testfeed"]
+        assert status["market_configured"] is True
+        assert "mock" not in str(status).lower()
 
-        # 2. search and quote are labelled mock/illustrative, never live
+        # 2. search and quote carry real provenance: the source and how fresh the data is
         found = c.get("/api/v1/market/search", params={"q": "apple"}).json()
         assert found["results"][0]["asset"]["symbol"] == "AAPL"
-        assert found["provenance"]["mode"] == "mock"
+        assert found["provenance"]["mode"] == "retrieved"
         quote = c.get("/api/v1/market/quote/AAPL").json()
-        assert quote["provenance"]["mode"] == "mock"
-        assert quote["provenance"]["illustrative"] is True
+        assert quote["provenance"]["mode"] == "live"
+        assert quote["provenance"]["source"] == "testfeed"
+        assert quote["available"] is True and quote["last_known"] is False
 
         # 3. series with indicator overlays and quality metadata
         series = c.get(
@@ -60,7 +66,7 @@ def test_twelve_step_workflow_with_restart(data_dir: Path) -> None:
         assert series["quality"]["count"] == len(series["bars"])
         stats = c.get("/api/v1/market/stats/AAPL").json()
         assert stats["observation_count"] > 100
-        assert stats["provenance"]["illustrative"] is True
+        assert stats["provenance"]["mode"] == "retrieved"
         compare = c.get("/api/v1/market/compare", params={"symbols": "AAPL,MSFT"}).json()
         assert len(compare["series"]) == 2
 
@@ -90,12 +96,13 @@ def test_twelve_step_workflow_with_restart(data_dir: Path) -> None:
         assert pf.json()["cash_balance"] == "10000.00"
         assert pf.json()["simulated"] is True
 
-        # 6. recommendation on illustrative data must refuse to recommend
+        # 6. a recommendation is either evidence-backed or an explicit refusal, never a guess
         rec = c.get("/api/v1/recommendations/AAPL", params={"portfolio_id": pid}).json()
-        assert rec["report"]["status"] == "insufficient_evidence"
-        assert rec["report"]["action"] is None
-        assert rec["report"]["prediction"] is None
-        assert rec["provenance"]["illustrative"] is True
+        assert rec["report"]["status"] in {"recommendation", "insufficient_evidence"}
+        if rec["report"]["status"] == "insufficient_evidence":
+            assert rec["report"]["action"] is None and rec["report"]["prediction"] is None
+        assert rec["provenance"]["mode"] == "retrieved"
+        assert rec["report"]["last_known"] is False
 
         # 7. order preview does not change the ledger; real order does
         # The default strategy's hard limits beat the request: AAPL is too volatile and too large.
@@ -112,7 +119,8 @@ def test_twelve_step_workflow_with_restart(data_dir: Path) -> None:
         assert c.get(f"/api/v1/paper/portfolios/{pid}").json()["positions"] == []
         placed = c.post(f"/api/v1/paper/portfolios/{pid}/orders", headers=H, json=order).json()
         assert placed["decision"]["status"] == "filled"
-        assert placed["decision"]["execution"]["illustrative"] is True
+        assert placed["decision"]["execution"]["quote_source"] == "testfeed"
+        assert placed["decision"]["execution"]["data_mode"] == "live"
         again = c.post(f"/api/v1/paper/portfolios/{pid}/orders", headers=H, json=order).json()
         assert again["duplicate"] is True
         view = c.get(f"/api/v1/paper/portfolios/{pid}").json()

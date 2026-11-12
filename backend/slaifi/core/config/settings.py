@@ -7,6 +7,8 @@ from typing import Literal
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+KNOWN_PROVIDERS = ("twelvedata", "tiingo", "fmp", "finnhub", "alphavantage")
+
 
 class Settings(BaseSettings):
     """Runtime settings sourced from environment variables or explicit arguments."""
@@ -32,22 +34,34 @@ class Settings(BaseSettings):
     # Mutating requests must carry the SLAIFI client marker header (see api.security).
     api_require_client_header: bool = True
 
-    # Market data. Mock mode is explicit and forbidden in production.
-    market_provider: Literal["mock", "twelvedata"] = "mock"
+    # Market data. SLAIFI asks the providers below in this order and falls back to its saved
+    # last-known observations; it never generates prices. Each provider needs its own free key.
+    market_provider_order: str = "twelvedata,tiingo,fmp,finnhub,alphavantage"
+    twelvedata_api_key: SecretStr | None = None
+    tiingo_api_key: SecretStr | None = None
+    fmp_api_key: SecretStr | None = None
+    finnhub_api_key: SecretStr | None = None
+    alphavantage_api_key: SecretStr | None = None
+    # Legacy name for the Twelve Data key (still honoured when the specific one is not set).
     market_api_key: SecretStr | None = None
+    # Optional endpoint overrides (an internal proxy, or a local stand-in server for tests).
+    twelvedata_base_url: str | None = None
+    tiingo_base_url: str | None = None
+    fmp_base_url: str | None = None
+    finnhub_base_url: str | None = None
+    alphavantage_base_url: str | None = None
+    # Raise (or lower) a provider's self-imposed request budget, for example on a paid plan:
+    # SLAIFI_MARKET_LIMITS='{"twelvedata": {"per_minute": 55, "per_day": 50000}}'
+    market_limits: dict[str, dict[str, int]] = Field(default_factory=dict)
     market_http_timeout_seconds: float = Field(default=10.0, gt=0.0, le=60.0)
-    market_quote_cache_ttl_seconds: float = Field(default=5.0, ge=0.0, le=60.0)
-    market_history_cache_ttl_seconds: float = Field(default=60.0, ge=0.0, le=900.0)
+    market_quote_cache_ttl_seconds: float = Field(default=60.0, ge=0.0, le=300.0)
+    market_history_cache_ttl_seconds: float = Field(default=300.0, ge=0.0, le=3600.0)
     market_overview_symbols: tuple[str, ...] = ("SPY", "QQQ", "DIA", "VIX")
-    # Known provider delay in minutes (for example 15 on a delayed plan). None means unknown;
-    # SLAIFI then reports quote age but never claims the feed is real time.
+    # Known provider delay in minutes for Twelve Data (for example 15 on a delayed plan). None
+    # means unknown; SLAIFI then reports quote age but never claims the feed is real time.
     market_data_delay_minutes: int | None = Field(default=None, ge=0, le=1440)
-    # Mock mode can serve a clearly labelled synthetic history so the whole workflow can be
-    # exercised without a provider key. It is never market data and is flagged everywhere.
-    mock_illustrative_history: bool = True
 
     # Paper trading. Real-money trading does not exist in SLAIFI and cannot be enabled.
-    paper_allow_illustrative_execution: bool = True
     paper_allow_closed_market_execution: bool = False
     paper_max_quote_age_seconds: int = Field(default=900, ge=1, le=86_400)
 
@@ -66,16 +80,42 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_runtime_contract(self) -> "Settings":
-        if self.environment == "production" and self.market_provider == "mock":
-            raise ValueError("production cannot use the mock market provider")
-        key = self.market_api_key.get_secret_value() if self.market_api_key is not None else ""
-        if self.market_provider == "twelvedata" and not key.strip():
+        unknown = [n for n in self.provider_order if n not in KNOWN_PROVIDERS]
+        if unknown:
             raise ValueError(
-                "SLAIFI_MARKET_API_KEY is required when SLAIFI_MARKET_PROVIDER=twelvedata"
+                f"SLAIFI_MARKET_PROVIDER_ORDER names unknown provider(s) {', '.join(unknown)}; "
+                f"choose from {', '.join(KNOWN_PROVIDERS)}"
             )
+        for name, windows in self.market_limits.items():
+            if name not in KNOWN_PROVIDERS:
+                raise ValueError(f"SLAIFI_MARKET_LIMITS names unknown provider {name!r}")
+            for window, value in windows.items():
+                if window not in ("per_minute", "per_hour", "per_day") or value < 1:
+                    raise ValueError(
+                        f"SLAIFI_MARKET_LIMITS[{name!r}] must use per_minute/per_hour/per_day "
+                        "with whole numbers of at least 1"
+                    )
         if self.slai_required and not self.slai_enabled:
             raise ValueError("SLAI cannot be both required and disabled")
         return self
+
+    @property
+    def provider_order(self) -> tuple[str, ...]:
+        names = [n.strip().lower() for n in self.market_provider_order.split(",") if n.strip()]
+        return tuple(dict.fromkeys(names))
+
+    def provider_key(self, name: str) -> str | None:
+        """The configured API key for a provider, or ``None`` when it is not configured."""
+
+        secret = getattr(self, f"{name}_api_key", None)
+        if secret is None and name == "twelvedata":
+            secret = self.market_api_key
+        value = secret.get_secret_value().strip() if secret is not None else ""
+        return value or None
+
+    def provider_base_url(self, name: str) -> str | None:
+        value = getattr(self, f"{name}_base_url", None)
+        return str(value).strip() or None if value else None
 
 
 @lru_cache(maxsize=1)

@@ -2,7 +2,7 @@
 
 The provider quotation and the simulated fill are kept apart: the fill price includes slippage
 and the trade carries a commission, both taken from the strategy's configured cost assumptions.
-Stale, illustrative, closed-market or unavailable quotes are refused according to the policy.
+Stale, last-known, closed-market or unavailable quotes are refused according to the policy.
 """
 
 from __future__ import annotations
@@ -84,17 +84,14 @@ def evaluate_order(
 
     warnings: list[str] = []
     notes: list[str] = []
-    if quote.illustrative:
-        if not policy.allow_illustrative:
-            return _reject(
-                request,
-                Rejection(
-                    RejectionCode.ILLUSTRATIVE_PRICE_NOT_ALLOWED,
-                    "The price is illustrative demonstration data, not a market price.",
-                ),
-            )
-        warnings.append(
-            "Filled at an illustrative (non-market) price; the result is not realistic."
+    if quote.last_known:
+        return _reject(
+            request,
+            Rejection(
+                RejectionCode.QUOTE_LAST_KNOWN,
+                "Only a last-known price is available because no live data source could be "
+                "reached; simulated orders need a current quotation.",
+            ),
         )
     if quote.is_market_open is False:
         if not policy.allow_closed_market:
@@ -206,10 +203,13 @@ def evaluate_order(
         currency=snapshot.base_currency,
         quote_observed_at=quote.observed_at,
         quote_source=quote.source,
-        data_mode="illustrative"
-        if quote.illustrative
-        else ("delayed" if quote.delayed else "market"),
-        illustrative=quote.illustrative,
+        data_mode=(
+            "delayed"
+            if quote.delayed is True
+            else "live"
+            if quote.delayed is False
+            else "live_delay_unknown"
+        ),
         executed_at=now,
         market_open=quote.is_market_open,
         notes=tuple(notes),
