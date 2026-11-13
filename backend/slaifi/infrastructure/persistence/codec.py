@@ -112,7 +112,7 @@ def strategy_from_dict(data: dict[str, Any]) -> StrategyProfile:
         excluded_symbols=frozenset(data.get("excluded_symbols", [])),
         trading_frequency=TradingFrequency(data.get("trading_frequency", "low")),
         costs=TransactionCosts(
-            commission_rate=Decimal(costs.get("commission_rate", "0.0005")),
+            commission_rate=Decimal(costs.get("commission_rate", "0")),
             commission_minimum=Decimal(costs.get("commission_minimum", "0")),
             slippage_rate=Decimal(costs.get("slippage_rate", "0.0005")),
         ),

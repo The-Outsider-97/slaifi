@@ -636,6 +636,20 @@ export type ProviderStatus = {
   free_tier_note: string | null;
 };
 
+/** Where a provider's key comes from: saved in Settings, or the .env file / environment. The key itself is never sent to the browser. */
+export type ProviderKeyInfo = {
+  name: string;
+  label: string;
+  env_var: string;
+  configured: boolean;
+  source: "settings" | "environment" | null;
+};
+
+export type ProviderKeysResponse = { keys: ProviderKeyInfo[] };
+
+/** What the trading platform charges, in the portfolio currency. */
+export type PlatformFees = { per_trade: string; per_withdrawal: string; simulated: boolean };
+
 export type ProvidersResponse = { configured: boolean; providers: ProviderStatus[] };
 
 export type ProviderCheck = {
@@ -691,7 +705,7 @@ export type GoalReview = { report: GoalReport; explanation: Explanation };
 export type AgentState = "disabled" | "untested" | "ready" | "unavailable" | string;
 
 export type AgentStatus = {
-  name: "knowledge" | "optimization" | "learning" | string;
+  name: "knowledge" | "financial" | "learning" | string;
   label: string;
   purpose: string;
   enabled: boolean;
@@ -713,6 +727,8 @@ export type AllocationLine = {
   suggested_weight: number;
   change: number;
   amount: string | null;
+  /** "buy" / "sell" when applying this line would place an order, otherwise null (no worthwhile change). */
+  side: "buy" | "sell" | null;
 };
 
 export type AllocationStats = { annual_volatility: number | null; historical_annual_return: number | null };
@@ -738,7 +754,28 @@ export type AllocationSuggestion = {
   excluded: { symbol: string; reason: string }[];
   checks: AllocationCheck[];
   basis: string;
+  /** The Financial agent's own caveats, shown as it gave them. */
+  agent_notes: string[];
+  /** What Apply refers to. Null when nothing would be traded. Valid until expires_at. */
+  suggestion_id: string | null;
+  expires_at: string | null;
+  fee_per_trade: string | null;
+  plan_notes: string[];
 };
+
+/** status: filled · rejected · already_applied. */
+export type AppliedOrder = {
+  symbol: string;
+  display: string;
+  side: "buy" | "sell";
+  status: string;
+  detail: string | null;
+  quantity: string | null;
+  price: string | null;
+  fee: string | null;
+};
+
+export type AppliedAllocation = { suggestion_id: string; filled: number; fees: string | null; orders: AppliedOrder[]; simulated: boolean };
 
 /** status: ok · nothing_to_share · disabled · unavailable. */
 export type LearningShare = { status: string; sent: number; duplicates: number; refused: number; detail: string | null };

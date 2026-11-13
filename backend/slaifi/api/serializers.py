@@ -41,8 +41,14 @@ from slaifi.domain.assets import AssetId
 from slaifi.domain.goals import GoalFeasibilityReport, GoalSpec
 from slaifi.domain.learning import TrackRecord
 from slaifi.domain.ledger import AuditEntry, Proposal, WatchlistItem
-from slaifi.domain.market import InstrumentInfo, OHLCVBar, ProviderCheck, ProviderStatus
-from slaifi.domain.paper import OrderDecision, PaperPortfolio
+from slaifi.domain.market import (
+    InstrumentInfo,
+    OHLCVBar,
+    ProviderCheck,
+    ProviderKeyInfo,
+    ProviderStatus,
+)
+from slaifi.domain.paper import OrderDecision, PaperPortfolio, PlatformFees
 from slaifi.domain.recommendations import RecommendationReport
 from slaifi.domain.strategies import PRESET_DESCRIPTIONS, StrategyProfile
 
@@ -146,6 +152,22 @@ def provider_status(s: ProviderStatus) -> dict[str, Any]:
         "calls_last_minute": s.calls_last_minute,
         "calls_today": s.calls_today,
         "free_tier_note": s.free_tier_note,
+    }
+
+
+def platform_fees(fees: PlatformFees) -> dict[str, Any]:
+    return {"per_trade": d(fees.per_trade), "per_withdrawal": d(fees.per_withdrawal)}
+
+
+def provider_key(k: ProviderKeyInfo) -> dict[str, Any]:
+    """Where a source's key comes from. The key itself is never part of any answer."""
+
+    return {
+        "name": k.name,
+        "label": k.label,
+        "env_var": k.env_var,
+        "configured": k.source is not None,
+        "source": k.source,
     }
 
 
@@ -972,6 +994,28 @@ def _allocation_stats(stats: Any) -> dict[str, Any] | None:
     }
 
 
+def applied_allocation(r: Any) -> dict[str, Any]:
+    return {
+        "suggestion_id": r.suggestion_id,
+        "filled": r.filled,
+        "fees": d(r.fees),
+        "orders": [
+            {
+                "symbol": o.symbol,
+                "display": o.display,
+                "side": o.side,
+                "status": o.status,
+                "detail": o.detail,
+                "quantity": d(o.quantity),
+                "price": d(o.price),
+                "fee": d(o.fee),
+            }
+            for o in r.orders
+        ],
+        "simulated": True,
+    }
+
+
 def allocation(a: Any) -> dict[str, Any]:
     return {
         "status": a.status,
@@ -985,6 +1029,11 @@ def allocation(a: Any) -> dict[str, Any]:
         "window_start": a.window_start.isoformat() if a.window_start else None,
         "window_end": a.window_end.isoformat() if a.window_end else None,
         "cash_weight": a.cash_weight,
+        "agent_notes": list(a.agent_notes),
+        "suggestion_id": a.suggestion_id,
+        "expires_at": t(a.expires_at) if a.expires_at else None,
+        "fee_per_trade": d(a.fee_per_trade),
+        "plan_notes": list(a.plan_notes),
         "current": _allocation_stats(a.current),
         "suggested": _allocation_stats(a.suggested),
         "lines": [
@@ -995,6 +1044,7 @@ def allocation(a: Any) -> dict[str, Any]:
                 "suggested_weight": line.suggested_weight,
                 "change": line.change,
                 "amount": d(line.amount) if line.amount is not None else None,
+                "side": line.side,
             }
             for line in a.lines
         ],

@@ -52,9 +52,13 @@ def classify_horizon(horizon_days: int) -> InvestmentHorizon:
 
 @dataclass(frozen=True, slots=True)
 class TransactionCosts:
-    """Assumed trading frictions, as fractions of notional (``0.0005`` = 5 bps)."""
+    """Assumed trading frictions, as fractions of notional (``0.0005`` = 5 bps).
 
-    commission_rate: Decimal = Decimal("0.0005")
+    The flat fee per trade and per withdrawal belongs to the trading platform, not to a strategy
+    (see ``PlatformFees``), so the default proportional commission is zero.
+    """
+
+    commission_rate: Decimal = Decimal("0")
     commission_minimum: Decimal = Decimal("0")
     slippage_rate: Decimal = Decimal("0.0005")
 

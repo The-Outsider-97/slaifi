@@ -12,6 +12,7 @@ from slaifi.api.schemas.finance import (
     CashRequest,
     CreatePortfolio,
     OrderRequestBody,
+    PlatformFeesBody,
     PortfolioStrategy,
     ResetRequest,
 )
@@ -24,6 +25,21 @@ from slaifi.domain.portfolio import TradeSide
 
 router = APIRouter(prefix="/api/v1/paper", tags=["paper-trading"])
 Paper = Annotated[PaperTradingService, Depends(get_paper_service)]
+
+
+@router.get("/fees")
+async def get_fees(paper: Paper) -> dict[str, Any]:
+    """What the trading platform charges per trade and per withdrawal (editable in Settings)."""
+
+    return {**out.platform_fees(paper.platform_fees()), "simulated": True}
+
+
+@router.put("/fees", dependencies=[MutationGuard])
+async def set_fees(body: PlatformFeesBody, paper: Paper) -> dict[str, Any]:
+    if body.per_trade is None and body.per_withdrawal is None:
+        raise ValidationError("send per_trade, per_withdrawal or both")
+    fees = paper.set_platform_fees(per_trade=body.per_trade, per_withdrawal=body.per_withdrawal)
+    return {**out.platform_fees(fees), "simulated": True}
 
 
 @router.get("/portfolios")

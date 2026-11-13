@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 import httpx
 
@@ -39,31 +39,47 @@ def _custom_policy(base: ProviderPolicy, limits: Mapping[str, int]) -> ProviderP
     )
 
 
+def build_provider(
+    name: str,
+    key: str,
+    settings: Settings,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> HttpMarketProvider:
+    """One adapter for ``name`` using ``key`` (the single place an adapter is constructed)."""
+
+    cls = PROVIDER_CLASSES[name]
+    limits = settings.market_limits.get(name)
+    kwargs: dict[str, object] = {
+        "api_key": key,
+        "policy": _custom_policy(cls.default_policy, limits) if limits else None,
+        "base_url": settings.provider_base_url(name),
+        "timeout_seconds": settings.market_http_timeout_seconds,
+        "transport": transport,
+    }
+    if name == "twelvedata":
+        kwargs["data_delay_minutes"] = settings.market_data_delay_minutes
+    return cls(**kwargs)  # type: ignore[arg-type]
+
+
 def build_gateway(
     settings: Settings,
     *,
     cache: MarketCache | None,
     transport: httpx.AsyncBaseTransport | None = None,
+    key_for: Callable[[str], str | None] | None = None,
 ) -> MultiSourceGateway:
+    """``key_for`` lets keys saved in Settings take part; by default only the environment is used."""
+
+    resolve = key_for or settings.provider_key
     configured: list[HttpMarketProvider] = []
     missing: list[type[HttpMarketProvider]] = []
     for name in settings.provider_order:
-        cls = PROVIDER_CLASSES[name]
-        key = settings.provider_key(name)
+        key = resolve(name)
         if key is None:
-            missing.append(cls)
+            missing.append(PROVIDER_CLASSES[name])
             continue
-        limits = settings.market_limits.get(name)
-        kwargs: dict[str, object] = {
-            "api_key": key,
-            "policy": _custom_policy(cls.default_policy, limits) if limits else None,
-            "base_url": settings.provider_base_url(name),
-            "timeout_seconds": settings.market_http_timeout_seconds,
-            "transport": transport,
-        }
-        if name == "twelvedata":
-            kwargs["data_delay_minutes"] = settings.market_data_delay_minutes
-        configured.append(cls(**kwargs))  # type: ignore[arg-type]
+        configured.append(build_provider(name, key, settings, transport=transport))
     return MultiSourceGateway(
         configured,
         unconfigured=missing,

@@ -8,6 +8,7 @@ import type {
   LearningRecall,
   LearningShare,
   AdvisorResponse,
+  AppliedAllocation,
   AuditEntry,
   BacktestResponse,
   CompareResponse,
@@ -21,8 +22,11 @@ import type {
   OrderOutcome,
   PerformanceResponse,
   PortfolioMeta,
+  PlatformFees,
   PortfolioView,
   ProviderCheck,
+  ProviderKeyInfo,
+  ProviderKeysResponse,
   ProvidersResponse,
   QuoteResponse,
   Reconciliation,
@@ -64,9 +68,26 @@ function mutate<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, bo
 export const fetchProviders = (signal?: AbortSignal) =>
   apiRequest<ProvidersResponse>(`${V1}/system/providers`, { signal });
 
-/** Makes one real request per configured provider (spends a little of each free quota). */
-export const checkProviders = () =>
-  mutate<{ checks: ProviderCheck[] }>("POST", `${V1}/system/providers/check`);
+/** Makes one real request per configured provider, or only `provider` (spends a little of each free quota). */
+export const checkProviders = (provider?: string) =>
+  mutate<{ checks: ProviderCheck[] }>("POST", `${V1}/system/providers/check${qs({ provider })}`);
+
+/** Which sources have a key and where it comes from. The keys themselves are never returned. */
+export const fetchProviderKeys = (signal?: AbortSignal) =>
+  apiRequest<ProviderKeysResponse>(`${V1}/system/provider-keys`, { signal });
+
+export const saveProviderKey = (name: string, key: string) =>
+  mutate<ProviderKeyInfo>("PUT", `${V1}/system/provider-keys/${encodeURIComponent(name)}`, { key });
+
+export const removeProviderKey = (name: string) =>
+  mutate<ProviderKeyInfo>("DELETE", `${V1}/system/provider-keys/${encodeURIComponent(name)}`);
+
+// ------------------------------------------------------------------ trading platform costs
+export const fetchPlatformFees = (signal?: AbortSignal) =>
+  apiRequest<PlatformFees>(`${V1}/paper/fees`, { signal });
+
+export const savePlatformFees = (fees: { per_trade?: string; per_withdrawal?: string }) =>
+  mutate<PlatformFees>("PUT", `${V1}/paper/fees`, fees);
 
 // ------------------------------------------------------------------ market
 export const marketMeta = (signal?: AbortSignal) => apiRequest<MarketMeta>(`${V1}/market/meta`, { signal });
@@ -248,6 +269,13 @@ export const checkAgent = (name: string) =>
   mutate<AgentStatus>("POST", `${V1}/system/agents/${encodeURIComponent(name)}/check`);
 export const searchKnowledge = (q: string, signal?: AbortSignal) =>
   apiRequest<KnowledgeAnswer>(`${V1}/knowledge/search${qs({ q, limit: 5 })}`, { signal });
+/** Places the paper orders of a suggestion: every line when `symbols` is omitted, otherwise just those. Amounts come from the server's copy of the suggestion. */
+export const applyAllocation = (id: string, suggestionId: string, symbols?: string[]) =>
+  mutate<AppliedAllocation>("POST", `${V1}/paper/portfolios/${encodeURIComponent(id)}/allocation/apply`, {
+    suggestion_id: suggestionId,
+    symbols: symbols && symbols.length ? symbols : undefined,
+  });
+
 export const fetchAllocation = (
   id: string,
   options: { symbols?: string; watchlist?: boolean; focus?: string },

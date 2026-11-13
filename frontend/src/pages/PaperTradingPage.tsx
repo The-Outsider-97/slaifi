@@ -14,6 +14,7 @@ import {
   createPortfolio,
   depositCash,
   fetchGuidance,
+  fetchPlatformFees,
   fetchPerformance,
   fetchPortfolio,
   fetchStrategies,
@@ -208,6 +209,8 @@ function Cash({ view, onDone }: { view: PortfolioView; onDone: () => void }) {
   const deposit = useAction(depositCash);
   const withdraw = useAction(withdrawCash);
   const id = view.portfolio.portfolio_id;
+  const fees = useAsync((signal) => fetchPlatformFees(signal), `${id}|fees`);
+  const withdrawalFee = fees.data ? Number(fees.data.per_withdrawal) : 0;
 
   const go = (kind: "deposit" | "withdraw") => async (event: FormEvent) => {
     event.preventDefault();
@@ -241,6 +244,11 @@ function Cash({ view, onDone }: { view: PortfolioView; onDone: () => void }) {
         <button className="secondary-button" type="submit" disabled={busy || amount.trim() === ""}>Deposit</button>
         <button className="secondary-button" type="button" disabled={busy || amount.trim() === ""} onClick={go("withdraw")}>Withdraw</button>
       </form>
+      {withdrawalFee > 0 ? (
+        <p className="muted" data-testid="withdrawal-fee-note">
+          Each withdrawal also pays your platform's {money(withdrawalFee, view.currency)} withdrawal fee (change it in Settings → Trading platform costs).
+        </p>
+      ) : null}
       {problem ? <Notice tone="error">{problem}</Notice> : null}
       {deposit.error ? <Notice tone="error">{deposit.error}</Notice> : null}
       {withdraw.error ? <Notice tone="error">{withdraw.error}</Notice> : null}
@@ -489,7 +497,13 @@ export function PaperTradingPage() {
   const view = useAsync(selected ? (signal) => fetchPortfolio(selected, signal) : null, selected ? `${selected}|${version}` : null);
   const closePosition = useAction(placeOrder);
 
-  const refresh = () => setVersion((v) => v + 1);
+  const [suggestionVersion, setSuggestionVersion] = useState(0);
+  // Anything that changes the portfolio makes a suggestion out of date, except applying that suggestion itself.
+  const refresh = () => {
+    setVersion((v) => v + 1);
+    setSuggestionVersion((v) => v + 1);
+  };
+  const refreshAfterApply = () => setVersion((v) => v + 1);
   const choose = (id: string) => {
     setSelected(id);
     remember(id);
@@ -565,7 +579,7 @@ export function PaperTradingPage() {
                   <Guidance id={view.data.portfolio.portfolio_id} refreshKey={version} />
                   <History id={view.data.portfolio.portfolio_id} refreshKey={version} />
                 </div>
-                <SuggestedAllocation key={`${view.data.portfolio.portfolio_id}:${version}`} id={view.data.portfolio.portfolio_id} currency={view.data.currency} />
+                <SuggestedAllocation key={`${view.data.portfolio.portfolio_id}:${suggestionVersion}`} id={view.data.portfolio.portfolio_id} currency={view.data.currency} onApplied={refreshAfterApply} />
                 <Maintenance view={view.data} onChanged={refresh} />
               </>
             ) : null}

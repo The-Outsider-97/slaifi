@@ -9,13 +9,15 @@ SLAIFI re-checks them against the strategy's hard limits and never acts on them 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
 from enum import StrEnum
 from typing import Protocol
 
 
 class AgentName(StrEnum):
     KNOWLEDGE = "knowledge"
-    OPTIMIZATION = "optimization"
+    FINANCIAL = "financial"
     LEARNING = "learning"
 
 
@@ -24,9 +26,10 @@ AGENT_INFO: dict[AgentName, tuple[str, str]] = {
         "Knowledge",
         "Looks things up in SLAIFI's own guides and methodology and quotes the passage it found.",
     ),
-    AgentName.OPTIMIZATION: (
-        "Optimization",
-        "Suggests a mix of holdings that would have been steadier, within your strategy's limits.",
+    AgentName.FINANCIAL: (
+        "Financial",
+        "Works out a mix of holdings that would have been steadier from real price history, "
+        "within your strategy's limits (SLAI's Financial agent, which uses SLAI's Optimization agent).",
     ),
     AgentName.LEARNING: (
         "Learning",
@@ -73,13 +76,25 @@ class KnowledgeLibrary(Protocol):
     def search(self, query: str, limit: int = 5) -> KnowledgeAnswer: ...
 
 
-# --------------------------------------------------------------------------------- optimization
+# ------------------------------------------------------------------------------------ financial
+@dataclass(frozen=True, slots=True)
+class PriceSeries:
+    """Real daily closes of one asset, with where they came from (nothing here is generated)."""
+
+    symbol: str
+    closes: tuple[tuple[date, Decimal], ...]
+    source: str
+    currency: str
+
+
 @dataclass(frozen=True, slots=True)
 class AllocationProblem:
     """A long-only allocation: minimise ``w'Σw − risk_aversion · μ'w`` subject to the bounds.
 
     ``expected_returns`` and ``covariance`` are *historical* annualised statistics from real
-    prices, not forecasts. ``budget`` is the total weight to allocate (1 − cash reserve).
+    prices, not forecasts; SLAIFI uses them to check what the agent proposes. The agent itself
+    works from ``series`` (the same real closes). ``budget`` is the total weight to allocate
+    (1 − cash reserve).
     """
 
     symbols: tuple[str, ...]
@@ -89,6 +104,7 @@ class AllocationProblem:
     upper: tuple[float, ...]
     budget: float
     risk_aversion: float = 0.0
+    series: tuple[PriceSeries, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,10 +115,16 @@ class AllocationSolution:
     weights: tuple[float, ...] | None = None
     solver: str | None = None
     detail: str | None = None
+    warnings: tuple[str, ...] = ()
 
 
-class PortfolioOptimizer(Protocol):
+class FinancialAnalyst(Protocol):
+    """SLAI's Financial agent, as far as SLAIFI uses it."""
+
     def solve(self, problem: AllocationProblem) -> AllocationSolution: ...
+
+    def check(self) -> None:
+        """Start the agent and run a read-only request; raises when it cannot."""
 
 
 # ------------------------------------------------------------------------------------- learning
@@ -170,8 +192,9 @@ __all__ = [
     "AgentStatus",
     "AllocationProblem",
     "AllocationSolution",
+    "FinancialAnalyst",
     "KnowledgeAnswer",
     "KnowledgeLibrary",
     "KnowledgePassage",
-    "PortfolioOptimizer",
+    "PriceSeries",
 ]

@@ -11,7 +11,7 @@ from slaifi.application.learning import LearningService
 from slaifi.application.market import GetMarketHistory
 from slaifi.application.market.get_overview import GetMarketOverview
 from slaifi.core.config import Settings
-from slaifi.core.utils.errors import ValidationError
+from slaifi.core.utils.errors import ConflictError, ValidationError
 from slaifi.domain.market import MarketGateway
 
 
@@ -73,7 +73,7 @@ def get_request_id(
 from slaifi.application.advisor import AdvisorService  # noqa: E402
 from slaifi.application.agents import AgentSwitches  # noqa: E402
 from slaifi.application.allocation import AllocationService  # noqa: E402
-from slaifi.application.contracts import FinanceStore, KnowledgeLibrary  # noqa: E402
+from slaifi.application.contracts import FinanceStore, KnowledgeLibrary, ProviderKeys  # noqa: E402
 from slaifi.application.goals import GoalTracker  # noqa: E402
 from slaifi.application.learning import LearningSharing  # noqa: E402
 from slaifi.application.market import MarketDataService  # noqa: E402
@@ -117,6 +117,15 @@ def get_advisor_service(request: Request) -> AdvisorService:
 
 def get_learning_service(request: Request) -> LearningService:
     return cast(LearningService, _state_value(request, "learning_service"))
+
+
+def get_provider_keys(request: Request) -> ProviderKeys:
+    keys = getattr(request.app.state, "provider_keys", None)
+    if keys is None:
+        raise ConflictError(
+            "API keys cannot be changed here because this SLAIFI was started with its own market-data gateway."
+        )
+    return cast(ProviderKeys, keys)
 
 
 def get_agent_switches(request: Request) -> AgentSwitches:

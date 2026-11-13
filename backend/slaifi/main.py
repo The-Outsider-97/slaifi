@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -24,13 +25,13 @@ from slaifi.application.allocation import AllocationService
 from slaifi.application.analysis import AnalyzeMarketSeries, AnalyzePortfolio
 from slaifi.application.contracts import (
     AgentName,
-    AllocationProblem,
     FinanceStore,
+    FinancialAnalyst,
     FinancialReasoner,
     KnowledgeLibrary,
     LearningMemory,
     NullSafetyReviewer,
-    PortfolioOptimizer,
+    ProviderKeys,
     ReasoningStatus,
     ReasoningUnavailableError,
     SafetyReviewer,
@@ -45,14 +46,15 @@ from slaifi.application.strategies import StrategyService
 from slaifi.core.config import Settings, get_settings
 from slaifi.domain.market import MarketCache, MarketGateway
 from slaifi.domain.market.models import AssetRef
-from slaifi.domain.paper import ExecutionPolicy
+from slaifi.domain.paper import ExecutionPolicy, PlatformFees
 from slaifi.infrastructure.market_data import InMemoryMarketCache, build_gateway
+from slaifi.infrastructure.market_data.keys import ProviderKeyManager, ProviderKeyStore
 from slaifi.infrastructure.persistence import SqliteFinanceStore
 from slaifi.integrations.slai import (
+    SlaiFinancialAgent,
     SlaiFinancialReasoner,
     SlaiKnowledgeLibrary,
     SlaiLearningMemory,
-    SlaiPortfolioOptimizer,
     SlaiSafetyReviewer,
 )
 
@@ -117,6 +119,7 @@ def _open_store(settings: Settings) -> tuple[FinanceStore, str]:
 def create_app(
     settings: Settings | None = None,
     market_gateway: MarketGateway | None = None,
+    market_transport: httpx.AsyncBaseTransport | None = None,
     financial_reasoner: FinancialReasoner | None = None,
     *,
     slai_factory: Any = None,
@@ -124,7 +127,7 @@ def create_app(
     finance_store: FinanceStore | None = None,
     safety_reviewer: SafetyReviewer | None = None,
     knowledge_library: KnowledgeLibrary | None = None,
-    portfolio_optimizer: PortfolioOptimizer | None = None,
+    financial_analyst: FinancialAnalyst | None = None,
     learning_memory: LearningMemory | None = None,
     access_token: str | None = None,
     security_headers: Mapping[str, str] | None = None,
@@ -139,9 +142,23 @@ def create_app(
     runtime_settings = settings or get_settings()
     owns_gateway = market_gateway is None
     market_cache: MarketCache | None = None
+    provider_keys: ProviderKeys | None = None
     if market_gateway is None:
         market_cache = _open_market_cache(runtime_settings)
-        gateway: MarketGateway = build_gateway(runtime_settings, cache=market_cache)
+        key_store = ProviderKeyStore(
+            _resolve_data_dir(runtime_settings) / "provider_keys.json",
+            runtime_settings.provider_key,
+        )
+        own_gateway = build_gateway(
+            runtime_settings,
+            cache=market_cache,
+            transport=market_transport,
+            key_for=key_store.resolve,
+        )
+        gateway: MarketGateway = own_gateway
+        provider_keys = ProviderKeyManager(
+            own_gateway, runtime_settings, key_store, transport=market_transport
+        )
     else:
         gateway = market_gateway
 
@@ -238,6 +255,7 @@ def create_app(
     app.state.settings = runtime_settings
     app.state.financial_reasoner = reasoner
     app.state.market_data_provider = gateway
+    app.state.provider_keys = provider_keys
     app.state.market_history_service = GetMarketHistory(gateway=gateway)
     app.state.market_analysis_service = AnalyzeMarketSeries(reasoner=reasoner)
     app.state.portfolio_analysis_service = AnalyzePortfolio(reasoner=reasoner)
@@ -258,6 +276,9 @@ def create_app(
             allow_closed_market=runtime_settings.paper_allow_closed_market_execution,
         ),
         storage_status=storage_status,
+        default_fees=PlatformFees(
+            runtime_settings.paper_trade_fee, runtime_settings.paper_withdrawal_fee
+        ),
     )
     goal_tracker = GoalTracker(store, paper_service, strategy_service)
     recommendation_log = RecommendationLog(store)
@@ -286,7 +307,7 @@ def create_app(
         store,
         {
             AgentName.KNOWLEDGE: runtime_settings.slai_knowledge_enabled,
-            AgentName.OPTIMIZATION: runtime_settings.slai_optimization_enabled,
+            AgentName.FINANCIAL: runtime_settings.slai_financial_enabled,
             AgentName.LEARNING: runtime_settings.slai_learning_enabled,
         },
         slai_enabled=runtime_settings.slai_enabled,
@@ -305,11 +326,11 @@ def create_app(
         report=lambda ok, detail: switches.note_result(AgentName.KNOWLEDGE, ok, detail),
         agent_type=runtime_settings.slai_knowledge_agent,
     )
-    optimizer = portfolio_optimizer or SlaiPortfolioOptimizer(
+    analyst = financial_analyst or SlaiFinancialAgent(
         agent_provider,
-        enabled=lambda: switches.is_enabled(AgentName.OPTIMIZATION),
-        report=lambda ok, detail: switches.note_result(AgentName.OPTIMIZATION, ok, detail),
-        agent_type=runtime_settings.slai_optimization_agent,
+        enabled=lambda: switches.is_enabled(AgentName.FINANCIAL),
+        report=lambda ok, detail: switches.note_result(AgentName.FINANCIAL, ok, detail),
+        agent_type=runtime_settings.slai_financial_agent,
     )
 
     memory = learning_memory or SlaiLearningMemory(
@@ -322,21 +343,12 @@ def create_app(
     def check_knowledge() -> None:
         library.search("strategy")
 
-    def check_optimizer() -> None:
-        # A solver self-test on a fixed two-asset problem. It is never shown as market data; it
-        # only tells Settings whether the agent starts and solves.
-        optimizer.solve(
-            AllocationProblem(
-                ("A", "B"), (0.0, 0.0), ((0.04, 0.0), (0.0, 0.09)), (0.0, 0.0), (1.0, 1.0), 1.0
-            )
-        )
-
     def check_learning() -> None:
         memory.recall(1)  # starts the agent and reads; sends nothing
 
     app.state.agent_checks = {
         AgentName.KNOWLEDGE: check_knowledge,
-        AgentName.OPTIMIZATION: check_optimizer,
+        AgentName.FINANCIAL: analyst.check,
         AgentName.LEARNING: check_learning,
     }
     app.state.learning_sharing = LearningSharing(store, memory)
@@ -347,8 +359,8 @@ def create_app(
         strategy_service,
         market_service,
         store,
-        optimizer,
-        enabled=lambda: switches.is_enabled(AgentName.OPTIMIZATION),
+        analyst,
+        enabled=lambda: switches.is_enabled(AgentName.FINANCIAL),
     )
     app.state.finance_store = store
     app.state.storage_status = storage_status

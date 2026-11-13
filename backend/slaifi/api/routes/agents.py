@@ -14,7 +14,7 @@ from slaifi.api.dependencies import (
     get_knowledge_library,
     get_learning_sharing,
 )
-from slaifi.api.schemas.finance import AgentSwitch
+from slaifi.api.schemas.finance import AgentSwitch, ApplyAllocation
 from slaifi.api.security import MutationGuard
 from slaifi.application.agents import AgentSwitches
 from slaifi.application.allocation import AllocationService
@@ -85,7 +85,7 @@ async def allocation(
 ) -> dict[str, Any]:
     """A steadier mix of the portfolio's holdings (and optional extras) within the strategy's limits.
 
-    Needs the Optimization agent switched on. Advice only; nothing is ordered.
+    Needs the Financial agent switched on. Advice only; nothing is ordered until you apply it.
     """
 
     if focus not in FOCUSES:
@@ -94,6 +94,20 @@ async def allocation(
     return out.allocation(
         await svc.suggest(portfolio_id, symbols=extra, include_watchlist=watchlist, focus=focus)
     )
+
+
+@router.post("/paper/portfolios/{portfolio_id}/allocation/apply", dependencies=[MutationGuard])
+async def apply_allocation(
+    portfolio_id: str, body: ApplyAllocation, svc: Allocation
+) -> dict[str, Any]:
+    """Place the paper orders of a suggestion: all of them, or just ``symbols``.
+
+    The amounts come from the suggestion kept on the server, never from this request. Every order
+    goes through the normal paper-trading checks and platform fees; refused orders are reported.
+    """
+
+    symbols = tuple(s.strip() for s in body.symbols or () if s.strip()) or None
+    return out.applied_allocation(await svc.apply(portfolio_id, body.suggestion_id, symbols))
 
 
 @router.get("/learning/slai-memory")

@@ -1,17 +1,17 @@
-"""Optional SLAI agents: switches, Knowledge adapter, allocation maths and the Optimization adapter."""
+"""Optional SLAI agents: switches, Knowledge adapter, allocation maths and the Financial adapter."""
 
 from __future__ import annotations
 
-import types as pytypes
 from dataclasses import replace
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from slaifi.application.agents import AgentSwitches
-from slaifi.application.contracts import AgentName, AllocationProblem
+from slaifi.application.contracts import AgentName, AllocationProblem, PriceSeries
 from slaifi.domain.strategies import get_preset
 from slaifi.engines.allocation import (
     aligned_returns,
@@ -22,17 +22,18 @@ from slaifi.engines.allocation import (
     verify_allocation,
 )
 from slaifi.infrastructure.persistence import SqliteFinanceStore
+from slaifi.integrations.slai.financial import (
+    INGEST_CHUNK,
+    SlaiFinancialAgent,
+    interpret,
+    observation_requests,
+    optimize_request,
+)
 from slaifi.integrations.slai.knowledge import (
     ID_PREFIX,
     SlaiKnowledgeLibrary,
     chunk_markdown,
     load_documents,
-)
-from slaifi.integrations.slai.optimizer import (
-    SlaiPortfolioOptimizer,
-    build_problem,
-    interpret,
-    variable_name,
 )
 
 
@@ -45,22 +46,30 @@ def store(tmp_path: Path) -> Any:
 
 # ----------------------------------------------------------------------------- switches
 def test_agents_are_off_until_switched_on_and_the_choice_is_stored_and_audited(store: Any) -> None:
-    switches = AgentSwitches(store, {AgentName.KNOWLEDGE: False, AgentName.OPTIMIZATION: True})
-    assert not switches.is_enabled("knowledge") and switches.is_enabled("optimization")
+    switches = AgentSwitches(store, {AgentName.KNOWLEDGE: False, AgentName.FINANCIAL: True})
+    assert not switches.is_enabled("knowledge") and switches.is_enabled("financial")
     assert switches.status("knowledge").state == "disabled"
-    assert switches.status("optimization").state == "untested"
+    assert switches.status("financial").state == "untested"
 
     switches.set_enabled("knowledge", True)
     assert switches.is_enabled("knowledge")
     # The person's choice wins over the configured default, including switching a default off.
-    switches.set_enabled("optimization", False)
-    assert not switches.is_enabled("optimization")
-    again = AgentSwitches(store, {AgentName.OPTIMIZATION: True})  # e.g. after a restart
-    assert again.is_enabled("knowledge") and not again.is_enabled("optimization")
+    switches.set_enabled("financial", False)
+    assert not switches.is_enabled("financial")
+    again = AgentSwitches(store, {AgentName.FINANCIAL: True})  # e.g. after a restart
+    assert again.is_enabled("knowledge") and not again.is_enabled("financial")
     actions = [(e.action, e.subject) for e in store.list_audit(10)]
     assert ("agent.enabled", "agent:knowledge") in actions
-    assert ("agent.disabled", "agent:optimization") in actions
+    assert ("agent.disabled", "agent:financial") in actions
     assert store.verify_audit_chain()[0]
+
+
+def test_a_choice_saved_for_the_earlier_optimization_agent_still_counts(store: Any) -> None:
+    store.set_setting("agent.optimization.enabled", "1")
+    switches = AgentSwitches(store, {AgentName.FINANCIAL: False})
+    assert switches.is_enabled("financial")
+    switches.set_enabled("financial", False)  # a choice under the new name wins
+    assert not AgentSwitches(store, {}).is_enabled("financial")
 
 
 def test_status_follows_how_the_last_use_went_and_a_new_choice_resets_it(store: Any) -> None:
@@ -312,40 +321,11 @@ def test_volatility_and_concentration_caps_are_enforced_independently() -> None:
     assert not hhi_ok((0.9, 0.05, 0.05))
 
 
-# -------------------------------------------------------------------- optimizer adapter
-class _T:
-    """A minimal stand-in for SLAI's optimization_types that records what it is given."""
-
-    class VariableDomain:
-        @staticmethod
-        def real(lo: float, hi: float) -> tuple[str, float, float]:
-            return ("real", lo, hi)
-
-    ProblemClass = pytypes.SimpleNamespace(QP="QP")
-
-    @staticmethod
-    def Variable(name: str, domain: Any) -> tuple[str, Any]:  # noqa: N802
-        return (name, domain)
-
-    @staticmethod
-    def Objective(name: str, linear: Any = None, quadratic: Any = None) -> dict[str, Any]:  # noqa: N802
-        return {"name": name, "linear": linear, "quadratic": quadratic}
-
-    @staticmethod
-    def Constraint(name: str, sense: str, rhs: float, linear: Any) -> dict[str, Any]:  # noqa: N802
-        return {"name": name, "sense": sense, "rhs": rhs, "linear": linear}
-
-    @staticmethod
-    def OptimizationProblem(
-        name: str, variables: Any, objectives: Any, constraints: Any, **kw: Any
-    ) -> dict[str, Any]:  # noqa: N802
-        return {
-            "name": name,
-            "variables": variables,
-            "objectives": objectives,
-            "constraints": constraints,
-            **kw,
-        }
+# -------------------------------------------------------------------- financial adapter
+def _series(symbol: str, days: int = 5, start: str = "100") -> PriceSeries:
+    first = date(2026, 1, 5)
+    closes = tuple((first + timedelta(days=i), Decimal(start) + Decimal(i)) for i in range(days))
+    return PriceSeries(symbol, closes, "twelvedata", "USD")
 
 
 PROBLEM = AllocationProblem(
@@ -356,88 +336,218 @@ PROBLEM = AllocationProblem(
     (0.7, 0.7),
     1.0,
     risk_aversion=0.0,
+    series=(_series("BRK.B"), _series("KO", start="50")),
 )
+AS_OF = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
 
 
-def test_the_problem_uses_slais_literal_quadratic_convention_and_safe_variable_names() -> None:
-    built = build_problem(_T, PROBLEM)
-    names = [v[0] for v in built["variables"]]
-    assert (
-        names == ["w0", "w1"] == [variable_name(0), variable_name(1)]
-    )  # "BRK.B" is not an identifier
-    quad = built["objectives"][0]["quadratic"]
-    # w'Σw = 0.04·w0² + 0.09·w1² + 2·0.01·w0·w1, each pair listed once
-    assert quad == {("w0", "w0"): 0.04, ("w0", "w1"): 0.02, ("w1", "w1"): 0.09}
-    assert built["objectives"][0]["linear"] == {}
-    assert built["constraints"][0]["sense"] == "==" and built["constraints"][0]["rhs"] == 1.0
-    assert built["problem_class"] == "QP"
-    leaning = build_problem(
-        _T,
-        AllocationProblem(
-            PROBLEM.symbols, MU, PROBLEM.covariance, PROBLEM.lower, PROBLEM.upper, 1.0, 2.0
-        ),
+def test_the_request_maps_the_strategys_limits_onto_the_agents_fully_invested_problem() -> None:
+    params = optimize_request(PROBLEM, AS_OF)["parameters"]
+    assert optimize_request(PROBLEM, AS_OF)["operation"] == "portfolio.optimize_allocation"
+    assert params["instrument_ids"] == ["BRK.B", "KO"]  # real symbols, dots included
+    assert params["from_time"].startswith("2026-01-05") and params["until_time"].startswith(
+        "2026-01-09"
     )
-    assert leaning["objectives"][0]["linear"] == {"w0": -2.0 * 0.05, "w1": -2.0 * 0.10}
+    assert params["as_of"] == AS_OF.isoformat() and params["periods_per_year"] == 252
+    # "Steadiest" ignores past return: a very large risk aversion on the agent's scale.
+    assert Decimal(params["risk_aversion"]) >= 1_000_000
+    assert (params["min_weight"], params["max_weight"]) == ("0.0", "0.7")
+
+    # An 20 % cash reserve leaves 0.8 to invest: weights over that budget, cap 0.4/0.8 = 0.5.
+    reserve = AllocationProblem(
+        PROBLEM.symbols, MU, PROBLEM.covariance, (0.0, 0.0), (0.4, 0.4), 0.8, 2.0, PROBLEM.series
+    )
+    leaning = optimize_request(reserve, AS_OF)["parameters"]
+    assert Decimal(leaning["max_weight"]) == Decimal("0.5")
+    # λ=2 on SLAIFI's scale is γ = budget/λ = 0.4 on the agent's (same optimum, rescaled).
+    assert Decimal(leaning["risk_aversion"]) == Decimal("0.4")
 
 
-def _payload(**kw: Any) -> dict[str, Any]:
+def test_a_problem_with_nothing_to_invest_or_no_prices_is_refused_before_any_call() -> None:
+    no_budget = AllocationProblem(
+        PROBLEM.symbols, MU, PROBLEM.covariance, (0.0, 0.0), (1.0, 1.0), 0.0, 0.0, PROBLEM.series
+    )
+    no_prices = AllocationProblem(
+        PROBLEM.symbols, MU, PROBLEM.covariance, (0.0, 0.0), (1.0, 1.0), 1.0
+    )
+    called: list[str] = []
+    agent = SlaiFinancialAgent(lambda n: called.append(n), enabled=lambda: True)
+    for problem in (no_budget, no_prices):
+        with pytest.raises(ValueError):
+            optimize_request(problem, AS_OF)
+        assert agent.solve(problem).status == "failed"
+    assert called == []
+
+
+def test_real_closes_are_sent_with_their_source_and_resending_is_harmless() -> None:
+    (request,) = list(observation_requests(PROBLEM))
+    assert request["operation"] == "data.ingest_observations"
+    rows = request["parameters"]["observations"]
+    assert len(rows) == 10 and {r["instrument_id"] for r in rows} == {"BRK.B", "KO"}
+    first = rows[0]
+    assert first["field_name"] == "close" and first["value"] == "100" and first["currency"] == "USD"
+    # retrieved_at equals observed_at, so sending the same closes again adds no new vintage.
+    assert first["source"] == {"source_id": "twelvedata", "retrieved_at": first["observed_at"]}
+    assert list(observation_requests(PROBLEM)) == [request]
+
+    big = AllocationProblem(
+        PROBLEM.symbols, MU, PROBLEM.covariance, (0.0,) * 2, (1.0,) * 2, 1.0, 0.0,
+        (_series("BRK.B", INGEST_CHUNK + 1), _series("KO", 3)),
+    )  # fmt: skip
+    sizes = [len(r["parameters"]["observations"]) for r in observation_requests(big)]
+    assert sizes == [INGEST_CHUNK, 4]
+
+
+def _envelope(**kw: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
         "status": "success",
         "success": True,
-        "solution": {"solver": "scipy_quadratic", "decision_variables": {"w0": 0.6, "w1": 0.4}},
+        "result": {
+            "weights": {"BRK.B": "0.6", "KO": "0.4"},
+            "solver": {"solver": "scipy_quadratic", "solver_status": "optimal"},
+        },
+        "warnings": ["Sample mean-variance weights are sensitive to estimation error."],
     }
     base.update(kw)
     return base
 
 
 def test_only_a_clear_success_with_every_weight_becomes_a_solution() -> None:
-    ok = interpret(_payload(), PROBLEM)
+    ok = interpret(_envelope(), PROBLEM)
     assert ok.status == "ok" and ok.weights == (0.6, 0.4) and ok.solver == "scipy_quadratic"
+    assert "estimation error" in ok.warnings[0]
+    # The agent's weights are over the invested part; the reported ones are scaled to the budget.
+    half = AllocationProblem(
+        PROBLEM.symbols, MU, PROBLEM.covariance, (0.0, 0.0), (1.0, 1.0), 0.5, 0.0, PROBLEM.series
+    )
+    assert interpret(_envelope(), half).weights == pytest.approx((0.3, 0.2))
     assert interpret("nonsense", PROBLEM).status == "failed"
-    assert interpret(_payload(success=False, status="failed"), PROBLEM).status == "failed"
-    infeasible = interpret(
-        _payload(success=False, status="failed", solution={"feasibility": "infeasible"}), PROBLEM
+    assert interpret(_envelope(success=False, status="failed"), PROBLEM).status == "failed"
+    refused = _envelope(
+        success=False,
+        status="failed",
+        error={"message": "min_weight/max_weight admit no fully invested portfolio"},
     )
-    assert infeasible.status == "infeasible"
-    missing = _payload(solution={"solver": "s", "decision_variables": {"w0": 0.6}})
+    assert interpret(refused, PROBLEM).status == "infeasible"
+    missing = _envelope(result={"weights": {"BRK.B": "0.6"}, "solver": {}})
     assert interpret(missing, PROBLEM).status == "failed"
-    not_finite = _payload(
-        solution={"solver": "s", "decision_variables": {"w0": 0.6, "w1": float("nan")}}
+    assert interpret(_envelope(result={"weights": {"BRK.B": "x", "KO": "1"}}), PROBLEM).status == (
+        "failed"
     )
-    assert interpret(not_finite, PROBLEM).status == "failed"
-    assert interpret(_payload(solution={"solver": "s"}), PROBLEM).status == "failed"
+    assert interpret(_envelope(result={"solver": {}}), PROBLEM).status == "failed"
 
 
-def test_the_optimizer_is_inert_when_off_and_reports_a_broken_agent(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import slaifi.integrations.slai.optimizer as module
+class FakeFinancialAgent:
+    """Mimics the real agent's envelope: ingest then optimize; records every request."""
 
-    monkeypatch.setattr(module.importlib, "import_module", lambda name: _T)
+    def __init__(self, answers: dict[str, dict[str, Any]] | None = None) -> None:
+        self.requests: list[dict[str, Any]] = []
+        self.answers = answers or {}
+
+    def perform_task(self, request: dict[str, Any]) -> dict[str, Any]:
+        self.requests.append(request)
+        default = {"success": True, "status": "success", "result": {"counts": {}}}
+        if request["operation"] == "portfolio.optimize_allocation":
+            default = _envelope()
+        return self.answers.get(request["operation"], default)
+
+
+def test_the_adapter_is_inert_when_off_and_drives_the_agent_when_on() -> None:
     called: list[str] = []
-    off = SlaiPortfolioOptimizer(lambda n: called.append(n), enabled=lambda: False)
+    off = SlaiFinancialAgent(lambda n: called.append(n), enabled=lambda: False)
     assert off.solve(PROBLEM).status == "disabled" and called == []
 
     reports: list[tuple[bool, str | None]] = []
+    fake = FakeFinancialAgent()
+    asked: list[str] = []
 
-    class Agent:
-        def optimize(self, request: dict[str, Any]) -> dict[str, Any]:
-            assert request["publish"] is False and request["time_limit_seconds"] > 0
-            return _payload()
+    def provider(name: str) -> Any:
+        asked.append(name)
+        return fake
 
-    working = SlaiPortfolioOptimizer(
-        lambda n: Agent(), enabled=lambda: True, report=lambda ok, d: reports.append((ok, d))
+    working = SlaiFinancialAgent(
+        provider,
+        enabled=lambda: True,
+        report=lambda ok, d: reports.append((ok, d)),
+        clock=lambda: AS_OF,
     )
-    assert working.solve(PROBLEM).weights == (0.6, 0.4) and reports == [(True, None)]
+    solved = working.solve(PROBLEM)
+    assert solved.weights == (0.6, 0.4) and reports == [(True, None)] and asked == ["financial"]
+    assert [r["operation"] for r in fake.requests] == [
+        "data.ingest_observations",
+        "portfolio.optimize_allocation",
+    ]
+    # A suggestion never asks the agent to remember, publish or trade anything else.
+    assert all(
+        r["operation"] in {"data.ingest_observations", "portfolio.optimize_allocation"}
+        for r in fake.requests
+    )
+
+
+def test_a_missing_refusing_or_failing_agent_is_reported_as_it_is() -> None:
+    reports: list[tuple[bool, str | None]] = []
 
     def broken(name: str) -> Any:
         raise ImportError("No module named 'scipy'")
 
-    failing = SlaiPortfolioOptimizer(
+    missing = SlaiFinancialAgent(
         broken, enabled=lambda: True, report=lambda ok, d: reports.append((ok, d))
     )
-    result = failing.solve(PROBLEM)
+    result = missing.solve(PROBLEM)
     assert result.status == "unavailable" and "scipy" in (result.detail or "")
+    assert reports[-1][0] is False
+
+    # The safety agent (or the configuration) can refuse to let the agent take the prices in.
+    refusing = SlaiFinancialAgent(
+        lambda n: FakeFinancialAgent(
+            {
+                "data.ingest_observations": {
+                    "success": False,
+                    "status": "failed",
+                    "error": {"message": "operation not authorized"},
+                }
+            }
+        ),
+        enabled=lambda: True,
+        report=lambda ok, d: reports.append((ok, d)),
+    )
+    refused = refusing.solve(PROBLEM)
+    assert refused.status == "unavailable" and "not authorized" in (refused.detail or "")
+    assert reports[-1][0] is False
+
+    # An agent that ran but found no allocation is a correct answer, not a broken agent.
+    infeasible = SlaiFinancialAgent(
+        lambda n: FakeFinancialAgent(
+            {
+                "portfolio.optimize_allocation": {
+                    "success": False,
+                    "status": "failed",
+                    "error": {"message": "min_weight/max_weight admit no fully invested portfolio"},
+                }
+            }
+        ),
+        enabled=lambda: True,
+        report=lambda ok, d: reports.append((ok, d)),
+    )
+    assert infeasible.solve(PROBLEM).status == "infeasible" and reports[-1] == (True, None)
+
+
+def test_check_runs_a_read_only_request_and_reports_the_result() -> None:
+    reports: list[tuple[bool, str | None]] = []
+    fake = FakeFinancialAgent()
+    ok = SlaiFinancialAgent(
+        lambda n: fake, enabled=lambda: True, report=lambda o, d: reports.append((o, d))
+    )
+    ok.check()
+    assert [r["operation"] for r in fake.requests] == ["data.counts"] and reports == [(True, None)]
+
+    bad = SlaiFinancialAgent(
+        lambda n: FakeFinancialAgent({"data.counts": {"success": False, "status": "failed"}}),
+        enabled=lambda: True,
+        report=lambda o, d: reports.append((o, d)),
+    )
+    with pytest.raises(RuntimeError):
+        bad.check()
     assert reports[-1][0] is False
 
 

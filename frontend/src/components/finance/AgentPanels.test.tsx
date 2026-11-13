@@ -1,8 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import type { AgentStatus, AllocationSuggestion, KnowledgeAnswer, LearningRecall, LearningShare } from "../../types/finance";
-import { AgentSwitchRow, AllocationView, KnowledgeResults, LearningMemoryView, agentStateText } from "./AgentPanels";
+import type { AgentStatus, AllocationSuggestion, AppliedOrder, KnowledgeAnswer, LearningRecall, LearningShare } from "../../types/finance";
+import { AgentSwitchRow, AllocationView, type ApplyControls, KnowledgeResults, LearningMemoryView, agentStateText } from "./AgentPanels";
 
 const agent: AgentStatus = {
   name: "knowledge",
@@ -78,8 +78,9 @@ describe("suggested allocation", () => {
     current: { annual_volatility: 0.14, historical_annual_return: 0.06 },
     suggested: { annual_volatility: 0.1, historical_annual_return: 0.05 },
     lines: [
-      { symbol: "KO", display: "NYSE:KO", current_weight: 0.5, suggested_weight: 0.3, change: -0.2, amount: "-400.00" },
-      { symbol: "SPY", display: "NYSE:SPY", current_weight: 0.2, suggested_weight: 0.6, change: 0.4, amount: "800.00" },
+      { symbol: "KO", display: "NYSE:KO", current_weight: 0.5, suggested_weight: 0.3, change: -0.2, amount: "-400.00", side: "sell" },
+      { symbol: "SPY", display: "NYSE:SPY", current_weight: 0.2, suggested_weight: 0.6, change: 0.4, amount: "800.00", side: "buy" },
+      { symbol: "JNJ", display: "NYSE:JNJ", current_weight: 0.1, suggested_weight: 0.1, change: 0.001, amount: "2.00", side: null },
     ],
     excluded: [{ symbol: "TSLA", reason: "above the strategy's volatility limit" }],
     checks: [
@@ -87,7 +88,16 @@ describe("suggested allocation", () => {
       { code: "concentration", ok: true, message: "ok" },
     ],
     basis: "Historical statistics from real prices over the window shown. They describe the past and are not a forecast.",
+    agent_notes: ["Sample mean-variance weights are sensitive to estimation error."],
+    suggestion_id: "S-abc123",
+    expires_at: "2026-11-12T10:15:00+00:00",
+    fee_per_trade: "1.00",
+    plan_notes: ["The 2 order(s) cost about 2.00 in fees; the buys are reduced by 1.80 in total so the cash reserve still holds afterwards."],
   };
+  const noop: ApplyControls = { running: false, error: null, results: {}, onApply: () => undefined };
+  const order = (over: Partial<AppliedOrder>): AppliedOrder => ({
+    symbol: "KO", display: "NYSE:KO", side: "sell", status: "filled", detail: null, quantity: "6.0000", price: "59.970000", fee: "1.00", ...over,
+  });
 
   it("shows current against suggested weights, the checks, what was left out, and that it is not a forecast", () => {
     const html = renderToStaticMarkup(<AllocationView s={base} currency="USD" />);
@@ -97,6 +107,53 @@ describe("suggested allocation", () => {
     expect(html).toContain("TSLA");
     expect(html).toContain("not a forecast");
     expect(html).toContain("no order is placed");
+  });
+
+  it("offers Apply on each line that would trade, Apply all, and says what each costs", () => {
+    const html = renderToStaticMarkup(<AllocationView s={base} currency="USD" apply={noop} />);
+    expect(html).toContain('aria-label="Apply: sell NYSE:KO for $400.00"');
+    expect(html).toContain('aria-label="Apply: buy NYSE:SPY for $800.00"');
+    expect(html).toContain("No change worth an order");
+    expect(html).toContain("Apply all (2)");
+    expect(html).toContain("Nothing is ordered until you press Apply or Apply all");
+    expect(html).toContain("reduced by 1.80");
+    expect(html).toContain("Notes from SLAI&#x27;s Financial agent");
+    expect(html).not.toContain("no order is placed");
+  });
+
+  it("does not offer Apply without a suggestion to refer to, or when read-only", () => {
+    expect(renderToStaticMarkup(<AllocationView s={{ ...base, suggestion_id: null }} currency="USD" apply={noop} />)).not.toContain("Apply all (");
+    const readOnly = renderToStaticMarkup(<AllocationView s={base} currency="USD" />);
+    expect(readOnly).not.toContain("Apply all (");
+    expect(readOnly).toContain("no order is placed");
+  });
+
+  it("shows what happened to each line, keeps refused lines retryable and counts only what is left", () => {
+    const html = renderToStaticMarkup(
+      <AllocationView
+        s={base}
+        currency="USD"
+        apply={{ ...noop, results: { KO: order({}), SPY: order({ symbol: "SPY", side: "buy", status: "rejected", detail: "Not enough cash.", quantity: null, price: null, fee: null }) } }}
+      />,
+    );
+    expect(html).toContain("Done: sold 6.0000 at $59.97, fee $1.00");
+    expect(html).toContain("Refused: Not enough cash.");
+    expect(html).toContain('aria-label="Apply: buy NYSE:SPY for $800.00"'); // can be tried again
+    expect(html).not.toContain('aria-label="Apply: sell NYSE:KO');
+    expect(html).toContain("Apply all (1)");
+  });
+
+  it("hides Apply all once everything is done and disables the buttons while orders are placed", () => {
+    const done = renderToStaticMarkup(
+      <AllocationView
+        s={base}
+        currency="USD"
+        apply={{ ...noop, results: { KO: order({}), SPY: order({ symbol: "SPY", side: "buy", quantity: "5.0000" }) } }}
+      />,
+    );
+    expect(done).not.toContain("Apply all (");
+    const busy = renderToStaticMarkup(<AllocationView s={base} currency="USD" apply={{ ...noop, running: true }} />);
+    expect(busy).toContain("disabled");
   });
 
   it("shows nothing as a suggestion when SLAIFI refused the proposal, only why", () => {
@@ -116,7 +173,7 @@ describe("suggested allocation", () => {
     expect(down).toContain("NOT AVAILABLE");
     expect(down).toContain("scipy is not installed.");
     const off = renderToStaticMarkup(<AllocationView currency="USD" s={{ ...base, status: "disabled", lines: [], observations: 0 }} />);
-    expect(off).toContain("Optimization agent is off");
+    expect(off).toContain("Financial agent is off");
     expect(off).not.toContain("<table");
   });
 });

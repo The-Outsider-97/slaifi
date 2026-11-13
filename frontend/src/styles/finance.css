@@ -30,6 +30,8 @@ input[type="checkbox"], input[type="radio"] { width: 16px; min-height: 16px; acc
 .check { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 12px; cursor: pointer; }
 .inline-form { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
 .inline-form .secondary-button, .button-row .secondary-button, .toolbar .secondary-button { margin-left: 0; }
+.key-editor { display: grid; gap: 6px; min-width: 260px; }
+.key-editor input { min-width: 180px; }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; align-items: end; }
 .button-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; }
@@ -220,7 +222,8 @@ input[type="checkbox"], input[type="radio"] { width: 16px; min-height: 16px; acc
 .analysis-panel .secondary-button--danger { justify-self: start; }
 
 /* ----- last-known and not-available market values ----- */
-.table-scroll { overflow-x: auto; }
+.table-scroll { position: relative; overflow-x: auto; max-width: 100%; min-width: 0; }
+.analysis-panel, .panel { min-width: 0; }
 .last-known-note { display: block; color: var(--accent); font: 600 9px var(--font-sans); letter-spacing: .06em; }
 .summary-card--last-known { border-color: rgba(225,200,56,.35); }
 .summary-card--unavailable .not-available { font-size: 15px; }

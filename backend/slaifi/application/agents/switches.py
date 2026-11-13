@@ -9,6 +9,9 @@ from datetime import UTC, datetime
 from slaifi.application.contracts import AGENT_INFO, AgentName, AgentStatus, FinanceStore
 
 _KEY = "agent.{}.enabled"
+# The Financial agent took over from the Optimization agent that SLAIFI used earlier: a choice the
+# person saved under the old name still counts until they save one under the new name.
+_LEGACY_KEY = {AgentName.FINANCIAL: "agent.optimization.enabled"}
 
 
 class AgentSwitches:
@@ -44,6 +47,8 @@ class AgentSwitches:
         if not self._slai_enabled:
             return False
         stored = self._store.get_setting(_KEY.format(agent.value))
+        if stored is None and agent in _LEGACY_KEY:
+            stored = self._store.get_setting(_LEGACY_KEY[agent])
         if stored is None:
             return bool(self._defaults.get(agent, False))
         return stored == "1"

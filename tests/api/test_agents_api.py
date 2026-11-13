@@ -22,12 +22,15 @@ from slaifi.core.config.settings import Settings
 
 
 class CappedEqualWeights:
-    """A stand-in optimizer: equal weights within the caps. It records what it was asked."""
+    """A stand-in Financial agent: equal weights within the caps. It records what it was asked."""
 
     def __init__(self, *, weights: tuple[float, ...] | None = None, status: str = "ok") -> None:
         self.fixed = weights
         self.status = status
         self.problems: list[AllocationProblem] = []
+
+    def check(self) -> None:
+        self.problems.append(AllocationProblem((), (), (), (), (), 1.0))
 
     def solve(self, problem: AllocationProblem) -> AllocationSolution:
         self.problems.append(problem)
@@ -87,10 +90,10 @@ def test_every_optional_agent_starts_off_and_switching_needs_the_client_header(
     tmp_path: Path,
 ) -> None:
     with app_client(
-        tmp_path, knowledge_library=FixedLibrary(), portfolio_optimizer=CappedEqualWeights()
+        tmp_path, knowledge_library=FixedLibrary(), financial_analyst=CappedEqualWeights()
     ) as c:
         listing = c.get("/api/v1/system/agents").json()
-        assert [a["name"] for a in listing["agents"]] == ["knowledge", "optimization", "learning"]
+        assert [a["name"] for a in listing["agents"]] == ["knowledge", "financial", "learning"]
         assert all(a["enabled"] is False and a["state"] == "disabled" for a in listing["agents"])
         assert "advise" in listing["note"]
 
@@ -118,20 +121,20 @@ def test_a_first_start_default_can_come_from_configuration(tmp_path: Path) -> No
     )
     with TestClient(create_app(s, knowledge_library=FixedLibrary())) as c:
         states = {a["name"]: a["enabled"] for a in c.get("/api/v1/system/agents").json()["agents"]}
-        assert states == {"knowledge": True, "optimization": False, "learning": False}
+        assert states == {"knowledge": True, "financial": False, "learning": False}
 
 
 def test_check_starts_only_agents_that_are_switched_on(tmp_path: Path) -> None:
     library, optimizer = FixedLibrary(), CappedEqualWeights()
-    with app_client(tmp_path, knowledge_library=library, portfolio_optimizer=optimizer) as c:
+    with app_client(tmp_path, knowledge_library=library, financial_analyst=optimizer) as c:
         assert (
             c.post("/api/v1/system/agents/knowledge/check", headers=H).json()["state"] == "disabled"
         )
         assert library.queries == []
         enable(c, "knowledge")
-        enable(c, "optimization")
+        enable(c, "financial")
         assert c.post("/api/v1/system/agents/knowledge/check", headers=H).status_code == 200
-        assert c.post("/api/v1/system/agents/optimization/check", headers=H).status_code == 200
+        assert c.post("/api/v1/system/agents/financial/check", headers=H).status_code == 200
         assert library.queries == ["strategy"] and len(optimizer.problems) == 1
         assert c.post("/api/v1/system/agents/knowledge/check").status_code == 403
 
@@ -163,7 +166,7 @@ def test_allocation_is_off_until_the_agent_is_switched_on_and_fetches_nothing_wh
     tmp_path: Path,
 ) -> None:
     optimizer = CappedEqualWeights()
-    with app_client(tmp_path, portfolio_optimizer=optimizer) as c:
+    with app_client(tmp_path, financial_analyst=optimizer) as c:
         pid = make_portfolio(c)
         got = c.get(f"/api/v1/paper/portfolios/{pid}/allocation").json()
         assert got["status"] == "disabled" and got["lines"] == [] and optimizer.problems == []
@@ -178,12 +181,12 @@ def test_a_suggestion_compares_with_the_current_mix_and_is_checked_by_slaifi(
     tmp_path: Path,
 ) -> None:
     optimizer = CappedEqualWeights()
-    with app_client(tmp_path, portfolio_optimizer=optimizer) as c:
+    with app_client(tmp_path, financial_analyst=optimizer) as c:
         loosen(c)
         pid = make_portfolio(c, "20000")
         for symbol, qty in (("KO", "30"), ("JNJ", "10"), ("SPY", "5"), ("DIA", "5")):
             buy(c, pid, symbol, qty)
-        enable(c, "optimization")
+        enable(c, "financial")
         got = c.get(f"/api/v1/paper/portfolios/{pid}/allocation").json()
         assert got["status"] == "ok", got
         assert got["observations"] >= 60 and got["window_start"] < got["window_end"]
@@ -215,13 +218,13 @@ def test_a_suggestion_compares_with_the_current_mix_and_is_checked_by_slaifi(
 
 def test_a_proposal_that_breaks_a_limit_is_refused_not_shown(tmp_path: Path) -> None:
     with app_client(
-        tmp_path, portfolio_optimizer=CappedEqualWeights(weights=(0.9, 0.9, 0.9, 0.9))
+        tmp_path, financial_analyst=CappedEqualWeights(weights=(0.9, 0.9, 0.9, 0.9))
     ) as c:
         loosen(c)
         pid = make_portfolio(c, "20000")
         for symbol in ("KO", "JNJ", "SPY", "DIA"):
             buy(c, pid, symbol, "5")
-        enable(c, "optimization")
+        enable(c, "financial")
         got = c.get(f"/api/v1/paper/portfolios/{pid}/allocation").json()
         assert got["status"] == "rejected" and got["lines"] == []
         assert "did not accept" in got["detail"]
@@ -232,24 +235,24 @@ def test_a_proposal_that_breaks_a_limit_is_refused_not_shown(tmp_path: Path) -> 
 def test_a_missing_or_failing_optimizer_is_reported_as_it_is(tmp_path: Path) -> None:
     for status in ("unavailable", "infeasible", "failed"):
         with app_client(
-            tmp_path / status, portfolio_optimizer=CappedEqualWeights(status=status)
+            tmp_path / status, financial_analyst=CappedEqualWeights(status=status)
         ) as c:
             loosen(c)
             pid = make_portfolio(c, "20000")
             for symbol in ("KO", "JNJ", "SPY", "DIA"):
                 buy(c, pid, symbol, "5")
-            enable(c, "optimization")
+            enable(c, "financial")
             got = c.get(f"/api/v1/paper/portfolios/{pid}/allocation").json()
             expected = status if status != "failed" else "unavailable"
             assert got["status"] == expected and got["lines"] == [] and "stand-in" in got["detail"]
 
 
 def test_too_little_to_work_with_says_so_and_unknown_symbols_are_excluded(tmp_path: Path) -> None:
-    with app_client(tmp_path, portfolio_optimizer=CappedEqualWeights()) as c:
+    with app_client(tmp_path, financial_analyst=CappedEqualWeights()) as c:
         loosen(c)
         pid = make_portfolio(c, "20000")
         buy(c, pid, "KO", "5")
-        enable(c, "optimization")
+        enable(c, "financial")
         got = c.get(
             f"/api/v1/paper/portfolios/{pid}/allocation", params={"symbols": "NOSUCH"}
         ).json()
@@ -266,18 +269,18 @@ def test_too_few_holdings_for_the_position_cap_is_infeasible_and_says_how_many_a
     tmp_path: Path,
 ) -> None:
     optimizer = CappedEqualWeights()
-    with app_client(tmp_path, portfolio_optimizer=optimizer) as c:
+    with app_client(tmp_path, financial_analyst=optimizer) as c:
         pid = make_portfolio(c, "20000")  # default strategy: 10% cap per position
         for symbol in ("KO", "JNJ", "SPY"):
             buy(c, pid, symbol, "5")
-        enable(c, "optimization")
+        enable(c, "financial")
         got = c.get(f"/api/v1/paper/portfolios/{pid}/allocation").json()
         assert got["status"] == "infeasible" and got["lines"] == [] and optimizer.problems == []
         assert "cap" in got["detail"].lower() or "at least" in got["detail"].lower()
 
 
 def test_assets_the_strategy_forbids_are_left_out_with_the_reason(tmp_path: Path) -> None:
-    with app_client(tmp_path, portfolio_optimizer=CappedEqualWeights()) as c:
+    with app_client(tmp_path, financial_analyst=CappedEqualWeights()) as c:
         loosen(c, 0.6)
         pid = make_portfolio(c, "20000")
         for symbol in ("KO", "JNJ", "SPY", "DIA"):
@@ -286,7 +289,7 @@ def test_assets_the_strategy_forbids_are_left_out_with_the_reason(tmp_path: Path
             "/api/v1/strategies/default", headers=H, json={"fields": {"excluded_symbols": ["JNJ"]}}
         )
         assert patch.status_code == 200, patch.text
-        enable(c, "optimization")
+        enable(c, "financial")
         got = c.get(f"/api/v1/paper/portfolios/{pid}/allocation").json()
         assert {line["symbol"] for line in got["lines"]} == {"KO", "SPY", "DIA"}, got
         assert any(e["symbol"].endswith("JNJ") and e["reason"] for e in got["excluded"])

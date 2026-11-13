@@ -43,7 +43,7 @@ export function OutcomeDetails({ outcome, currency }: { outcome: OrderOutcome; c
         <dl className="facts facts--stack">
           <div><dt>Quote used</dt><dd>{money(ex.quote_price, ex.currency)}</dd><small>{ex.quote_source} · observed {dateTime(ex.quote_observed_at)}</small></div>
           <div><dt>Simulated fill price</dt><dd>{money(ex.execution_price, ex.currency)}</dd><small>includes {money(ex.slippage_per_unit, ex.currency)} per unit slippage</small></div>
-          <div><dt>Commission</dt><dd>{money(ex.commission, ex.currency)}</dd></div>
+          <div><dt>Fees</dt><dd>{money(ex.commission, ex.currency)}</dd></div>
           <div><dt>Gross amount</dt><dd>{money(ex.gross_amount, ex.currency)}</dd></div>
           <div><dt>Cash effect</dt><dd>{money(ex.net_cash_effect, ex.currency)}</dd></div>
           <div><dt>Quantity</dt><dd>{decision.trade ? quantity(decision.trade.quantity) : "see preview"}</dd></div>

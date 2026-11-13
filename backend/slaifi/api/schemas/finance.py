@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 
 class _Body(BaseModel):
@@ -33,6 +33,22 @@ class CreatePortfolio(_Body):
 class CashRequest(_Body):
     amount: Decimal = Field(gt=0, max_digits=18, decimal_places=2)
     note: str | None = Field(default=None, max_length=200)
+
+
+class ApplyAllocation(_Body):
+    """Which suggested orders to place. ``symbols`` empty or missing means all of them."""
+
+    suggestion_id: str = Field(min_length=3, max_length=40)
+    symbols: list[str] | None = Field(default=None, max_length=20)
+
+
+class PlatformFeesBody(_Body):
+    """Either fee may be sent on its own; zero means the platform charges nothing."""
+
+    per_trade: Decimal | None = Field(default=None, ge=0, le=1000, max_digits=8, decimal_places=2)
+    per_withdrawal: Decimal | None = Field(
+        default=None, ge=0, le=1000, max_digits=8, decimal_places=2
+    )
 
 
 class OrderRequestBody(_Body):
@@ -100,6 +116,12 @@ class AdvisorRequest(_Body):
 class AdvisorConfirm(_Body):
     acknowledge_limit_changes: bool = False
     acknowledge_contradictions: bool = False
+
+
+class ProviderKey(BaseModel):
+    """A market-data API key typed into Settings. Never returned by any endpoint."""
+
+    key: SecretStr = Field(max_length=512, repr=False)
 
 
 class AgentSwitch(_Body):

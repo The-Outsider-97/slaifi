@@ -203,8 +203,8 @@ class MarketDataService:
     def provider_status(self) -> Sequence[ProviderStatus]:
         return self._gateway.provider_status()
 
-    async def check_providers(self) -> Sequence[ProviderCheck]:
-        return await self._gateway.check_providers()
+    async def check_providers(self, only: str | None = None) -> Sequence[ProviderCheck]:
+        return await self._gateway.check_providers(only)
 
     @property
     def data_mode(self) -> str:

@@ -5,6 +5,7 @@ import { useAction, useAsync } from "../../hooks/useAsync";
 import { dateTime, humanize, money, percent, shortDate, signedPercent } from "../../lib/format";
 import {
   checkAgent,
+  applyAllocation,
   fetchAgents,
   fetchAllocation,
   fetchLearningMemory,
@@ -12,7 +13,7 @@ import {
   setAgentEnabled,
   shareWithSlai,
 } from "../../services/finance";
-import type { AgentStatus, AllocationSuggestion, KnowledgeAnswer, LearningRecall, LearningShare } from "../../types/finance";
+import type { AgentStatus, AllocationSuggestion, AppliedOrder, KnowledgeAnswer, LearningRecall, LearningShare } from "../../types/finance";
 import { Empty, Loading, Notice, Simulated } from "./Notice";
 
 /** What a person should read for each state. "Off" is the normal state: nothing here is forced. */
@@ -178,15 +179,63 @@ const CHECK_LABEL: Record<string, string> = {
   concentration: "Within the strategy's concentration limit",
 };
 
-export function AllocationView({ s, currency }: { s: AllocationSuggestion; currency: string }) {
+/** What the buttons need to place orders from a suggestion. Absent means the view is read-only. */
+export type ApplyControls = {
+  running: boolean;
+  error: string | null;
+  results: Record<string, AppliedOrder>;
+  onApply: (symbols: string[] | null) => void;
+};
+
+function appliedText(r: AppliedOrder, currency: string): string {
+  if (r.status === "filled") {
+    return `Done: ${r.side === "buy" ? "bought" : "sold"} ${r.quantity ?? ""} at ${money(r.price, currency)}${r.fee ? `, fee ${money(r.fee, currency)}` : ""}`;
+  }
+  if (r.status === "already_applied") return "Already done";
+  return `Refused: ${r.detail ?? "the order was not accepted"}`;
+}
+
+function ApplyAll({ s, currency, apply }: { s: AllocationSuggestion; currency: string; apply: ApplyControls }) {
+  const [confirming, setConfirming] = useState(false);
+  const todo = s.lines.filter((l) => l.side && apply.results[l.symbol]?.status !== "filled" && apply.results[l.symbol]?.status !== "already_applied");
+  if (!s.suggestion_id || todo.length === 0) return null;
+  const fee = s.fee_per_trade === null ? 0 : Number(s.fee_per_trade);
+  const sells = todo.filter((l) => l.side === "sell").length;
+  const buys = todo.length - sells;
+  const cost = fee * todo.length;
+  return (
+    <div className="apply-all" data-testid="apply-all">
+      {confirming ? (
+        <Notice tone="info" title={`Place ${todo.length} simulated order${todo.length === 1 ? "" : "s"}?`}>
+          {sells ? `${sells} sale${sells === 1 ? "" : "s"} first, then ` : ""}
+          {`${buys} purchase${buys === 1 ? "" : "s"}, each checked against your strategy at the current price.`}
+          {cost > 0 ? ` Platform fees: ${money(cost, currency)} (${todo.length} × ${money(fee, currency)}).` : ""}
+          <span className="button-row">
+            <button type="button" className="primary-cta primary-cta--inline" disabled={apply.running} onClick={() => { setConfirming(false); apply.onApply(null); }}>
+              {apply.running ? "Placing…" : `Place ${todo.length} order${todo.length === 1 ? "" : "s"}`}
+            </button>
+            <button type="button" className="secondary-button" disabled={apply.running} onClick={() => setConfirming(false)}>Cancel</button>
+          </span>
+        </Notice>
+      ) : (
+        <button type="button" className="secondary-button" disabled={apply.running} onClick={() => setConfirming(true)}>
+          Apply all ({todo.length})
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function AllocationView({ s, currency, apply }: { s: AllocationSuggestion; currency: string; apply?: ApplyControls }) {
   if (s.status === "disabled") {
     return (
-      <Notice tone="info" title="The Optimization agent is off">
+      <Notice tone="info" title="The Financial agent is off">
         Switch it on under <a href="#/settings">Settings</a> to see a suggested mix for this portfolio. Nothing changes until you place orders yourself.
       </Notice>
     );
   }
   const problem = s.status !== "ok";
+  const canApply = apply !== undefined && s.suggestion_id !== null;
   return (
     <div className="stack" data-testid="allocation-result">
       {problem ? (
@@ -201,22 +250,53 @@ export function AllocationView({ s, currency }: { s: AllocationSuggestion; curre
       ) : null}
       {s.status === "ok" ? (
         <>
+          <div className="table-scroll">
           <table className="table" aria-label="Suggested allocation">
             <thead>
-              <tr><th>Asset</th><th>Now</th><th>Suggested</th><th>Change</th><th>Amount to move</th></tr>
+              <tr><th>Asset</th><th>Now</th><th>Suggested</th><th>Change</th><th>Amount to move</th>{canApply ? <th>Apply</th> : null}</tr>
             </thead>
             <tbody>
-              {s.lines.map((l) => (
-                <tr key={l.symbol}>
-                  <td>{l.display}</td>
-                  <td>{percent(l.current_weight, 1)}</td>
-                  <td>{percent(l.suggested_weight, 1)}</td>
-                  <td className={l.change > 0 ? "positive-text" : l.change < 0 ? "negative-text" : undefined}>{signedPercent(l.change, 1)}</td>
-                  <td>{l.amount === null ? "—" : money(l.amount, currency)}</td>
-                </tr>
-              ))}
+              {s.lines.map((l) => {
+                const done = apply?.results[l.symbol];
+                const finished = done?.status === "filled" || done?.status === "already_applied";
+                return (
+                  <tr key={l.symbol} data-testid={`alloc-row-${l.symbol}`}>
+                    <td>{l.display}</td>
+                    <td>{percent(l.current_weight, 1)}</td>
+                    <td>{percent(l.suggested_weight, 1)}</td>
+                    <td className={l.change > 0 ? "positive-text" : l.change < 0 ? "negative-text" : undefined}>{signedPercent(l.change, 1)}</td>
+                    <td>{l.amount === null ? "—" : money(l.amount, currency)}</td>
+                    {canApply ? (
+                      <td>
+                        {l.side === null ? (
+                          <span className="muted">No change worth an order</span>
+                        ) : finished ? (
+                          <span className="positive-text">{appliedText(done, currency)}</span>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className="secondary-button secondary-button--tight"
+                              disabled={apply.running}
+                              aria-label={`Apply: ${l.side === "buy" ? "buy" : "sell"} ${l.display}${l.amount === null ? "" : ` for ${money(Math.abs(Number(l.amount)), currency)}`}`}
+                              onClick={() => apply.onApply([l.symbol])}
+                            >
+                              Apply
+                            </button>
+                            {done ? <small className="block negative-text">{appliedText(done, currency)}</small> : null}
+                          </>
+                        )}
+                      </td>
+                    ) : null}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+          </div>
+          {canApply ? <ApplyAll s={s} currency={currency} apply={apply} /> : null}
+          {apply?.error ? <Notice tone="error">{apply.error}</Notice> : null}
+          {s.plan_notes.map((n) => <p key={n} className="muted">{n}</p>)}
           <dl className="settings-list">
             <div className="setting-row"><dt>Cash kept back</dt><dd>{s.cash_weight === null ? "—" : percent(s.cash_weight, 1)}</dd></div>
             <div className="setting-row"><dt>Volatility (past), now → suggested</dt><dd>{percent(s.current?.annual_volatility, 1)} → {percent(s.suggested?.annual_volatility, 1)}</dd></div>
@@ -229,6 +309,12 @@ export function AllocationView({ s, currency }: { s: AllocationSuggestion; curre
               </li>
             ))}
           </ul>
+          {s.agent_notes.length > 0 ? (
+            <details>
+              <summary>Notes from SLAI's Financial agent</summary>
+              <ul>{s.agent_notes.map((n) => <li key={n}>{n}</li>)}</ul>
+            </details>
+          ) : null}
         </>
       ) : null}
       {s.excluded.length > 0 ? (
@@ -242,32 +328,47 @@ export function AllocationView({ s, currency }: { s: AllocationSuggestion; curre
           {s.basis}
           {s.window_start && s.window_end ? ` Window: ${shortDate(s.window_start)} to ${shortDate(s.window_end)}, ${s.observations} daily observations.` : ""}
           {s.solver ? ` Solver: ${s.solver}.` : ""}
-          {s.generated_at ? ` Made ${dateTime(s.generated_at)}.` : ""} It is advice only: no order is placed.
+          {s.generated_at ? ` Made ${dateTime(s.generated_at)}.` : ""}{" "}
+          {canApply
+            ? `Nothing is ordered until you press Apply or Apply all${s.expires_at ? `; this suggestion can be applied until ${dateTime(s.expires_at)}` : ""}. Orders are simulated and go through the usual checks.`
+            : "It is advice only: no order is placed."}
         </p>
       ) : null}
     </div>
   );
 }
 
-/** Optional: a suggested mix for the selected paper portfolio, produced by SLAI's optimizer and re-checked by SLAIFI.
- *  It runs only when asked, because it reads price history for every holding. */
-export function SuggestedAllocation({ id, currency }: { id: string; currency: string }) {
+/** Optional: a suggested mix for the selected paper portfolio, produced by SLAI's Financial agent and re-checked by SLAIFI.
+ *  It runs only when asked, because it reads price history for every holding. Apply places the paper orders. */
+export function SuggestedAllocation({ id, currency, onApplied }: { id: string; currency: string; onApplied?: () => void }) {
   const [focus, setFocus] = useState<"steadiest" | "strategy">("steadiest");
   const [watchlist, setWatchlist] = useState(false);
+  const [results, setResults] = useState<Record<string, AppliedOrder>>({});
   const run = useAction(() => fetchAllocation(id, { focus, watchlist }));
+  const place = useAction(applyAllocation);
+  const suggestionId = run.result?.suggestion_id ?? null;
+
+  const onApply = async (symbols: string[] | null) => {
+    if (!suggestionId) return;
+    const done = await place.run(id, suggestionId, symbols ?? undefined);
+    if (done) {
+      setResults((before) => ({ ...before, ...Object.fromEntries(done.orders.map((o) => [o.symbol, o])) }));
+      onApplied?.();
+    }
+  };
 
   return (
     <section className="panel analysis-panel" aria-labelledby="alloc-title" data-testid="suggested-allocation">
       <div className="panel-heading">
         <div>
-          <span className="section-kicker">OPTIONAL · SLAI OPTIMIZATION AGENT</span>
+          <span className="section-kicker">OPTIONAL · SLAI FINANCIAL AGENT</span>
           <h2 id="alloc-title">Suggested allocation</h2>
         </div>
         <Simulated />
       </div>
       <p className="muted">
-        Asks SLAI's optimizer for a mix of this portfolio's holdings that fits your strategy's limits, then SLAIFI checks the answer itself. It is advice
-        only: nothing is bought or sold.
+        Asks SLAI's Financial agent for a mix of this portfolio's holdings that fits your strategy's limits, then SLAIFI checks the answer itself.
+        Nothing is bought or sold until you press Apply (one line) or Apply all.
       </p>
       <div className="inline-form">
         <label className="field field--compact">
@@ -281,13 +382,24 @@ export function SuggestedAllocation({ id, currency }: { id: string; currency: st
           <input type="checkbox" checked={watchlist} onChange={(e) => setWatchlist(e.target.checked)} />
           <span>Also consider my watchlist</span>
         </label>
-        <button type="button" className="secondary-button" disabled={run.running} onClick={() => void run.run()}>
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={run.running || place.running}
+          onClick={() => {
+            setResults({});
+            place.clear();
+            void run.run();
+          }}
+        >
           {run.running ? "Working…" : "Suggest a mix"}
         </button>
       </div>
       {run.running ? <Loading label="Working out a mix from real price history…" /> : null}
       {run.error ? <Notice tone="error">{run.error}</Notice> : null}
-      {run.result && !run.running ? <AllocationView s={run.result} currency={currency} /> : null}
+      {run.result && !run.running ? (
+        <AllocationView s={run.result} currency={currency} apply={{ running: place.running, error: place.error, results, onApply: (symbols) => void onApply(symbols) }} />
+      ) : null}
     </section>
   );
 }
@@ -314,6 +426,7 @@ export function LearningMemoryView({ share, recall }: { share: LearningShare | n
       {recall?.status === "unavailable" ? <Notice tone="warning" title="NOT AVAILABLE">{recall.detail}</Notice> : null}
       {recall?.status === "empty" ? <Empty title="Nothing recorded yet">{recall.detail}</Empty> : null}
       {recall?.status === "ok" ? (
+        <div className="table-scroll">
         <table className="table" aria-label="What SLAI has recorded">
           <thead>
             <tr><th>Recommendation</th><th>Outcomes SLAI holds</th><th>Average move afterwards</th></tr>
@@ -328,6 +441,7 @@ export function LearningMemoryView({ share, recall }: { share: LearningShare | n
             ))}
           </tbody>
         </table>
+        </div>
       ) : null}
     </div>
   );

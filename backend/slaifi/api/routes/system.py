@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -11,10 +12,12 @@ from slaifi.api.dependencies import (
     get_finance_store,
     get_market_data_service,
     get_paper_service,
+    get_provider_keys,
     get_runtime_settings,
 )
+from slaifi.api.schemas.finance import ProviderKey
 from slaifi.api.security import MutationGuard
-from slaifi.application.contracts import FinanceStore
+from slaifi.application.contracts import FinanceStore, ProviderKeys
 from slaifi.application.market import MarketDataService
 from slaifi.application.paper import PaperTradingService
 from slaifi.core.config import Settings
@@ -86,7 +89,51 @@ async def providers(
 @router.post("/providers/check", dependencies=[MutationGuard])
 async def check_providers(
     market: Annotated[MarketDataService, Depends(get_market_data_service)],
+    provider: str | None = Query(None, max_length=32),
 ) -> dict[str, Any]:
-    """Make one real request per configured provider and report what happened."""
+    """Make one real request per configured provider (or just ``provider``) and report what happened."""
 
-    return {"checks": [out.provider_check(c) for c in await market.check_providers()]}
+    return {"checks": [out.provider_check(c) for c in await market.check_providers(provider)]}
+
+
+Keys = Annotated[ProviderKeys, Depends(get_provider_keys)]
+Ledger = Annotated[FinanceStore, Depends(get_finance_store)]
+
+
+@router.get("/provider-keys")
+async def provider_keys(keys: Keys) -> dict[str, Any]:
+    """Which sources have a key and where it comes from (Settings or .env). Keys are never shown."""
+
+    return {"keys": [out.provider_key(k) for k in keys.info()]}
+
+
+@router.put("/provider-keys/{name}", dependencies=[MutationGuard])
+async def save_provider_key(
+    name: str, body: ProviderKey, keys: Keys, store: Ledger
+) -> dict[str, Any]:
+    """Save a key typed into Settings and start using it at once. The audit log records only that it changed."""
+
+    info = await keys.set_key(name, body.key.get_secret_value())
+    store.append_audit(
+        at=datetime.now(UTC),
+        actor="user",
+        action="market.key.saved",
+        subject=f"provider:{info.name}",
+        detail={"source": info.source},
+    )
+    return out.provider_key(info)
+
+
+@router.delete("/provider-keys/{name}", dependencies=[MutationGuard])
+async def remove_provider_key(name: str, keys: Keys, store: Ledger) -> dict[str, Any]:
+    """Remove the key saved in Settings; a key in .env (if any) is used again."""
+
+    info = await keys.clear_key(name)
+    store.append_audit(
+        at=datetime.now(UTC),
+        actor="user",
+        action="market.key.removed",
+        subject=f"provider:{info.name}",
+        detail={"source": info.source},
+    )
+    return out.provider_key(info)

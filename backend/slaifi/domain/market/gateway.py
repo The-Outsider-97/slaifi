@@ -86,6 +86,16 @@ class ProviderStatus:
 
 
 @dataclass(frozen=True, slots=True)
+class ProviderKeyInfo:
+    """Whether a source has an API key and where it comes from. Never holds the key itself."""
+
+    name: str
+    label: str
+    env_var: str
+    source: str | None  # "settings" (saved in Settings) · "environment" (.env / environment) · None
+
+
+@dataclass(frozen=True, slots=True)
 class ProviderCheck:
     name: str
     configured: bool
@@ -142,7 +152,7 @@ class MarketGateway(Protocol):
 
     def provider_status(self) -> Sequence[ProviderStatus]: ...
 
-    async def check_providers(self) -> Sequence[ProviderCheck]: ...
+    async def check_providers(self, only: str | None = None) -> Sequence[ProviderCheck]: ...
 
 
 @dataclass(frozen=True, slots=True)

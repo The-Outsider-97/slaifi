@@ -1,12 +1,13 @@
 import { AppShell } from "../components/AppShell";
 import { AgentSwitchesCard } from "../components/finance/AgentPanels";
 import { Loading, Notice } from "../components/finance/Notice";
+import { PlatformFeesCard, ProviderKeyEditor } from "../components/finance/SettingsCards";
 import { PageHeading } from "../components/finance/PageHeading";
 import { useAction, useAsync } from "../hooks/useAsync";
 import { useTheme } from "../hooks/useTheme";
 import { dateTime, humanize } from "../lib/format";
 import { fetchSlaiStatus } from "../services/api";
-import { backupNow, checkProviders, fetchAudit, fetchProviders, fetchSystemStatus, reconcileAll } from "../services/finance";
+import { backupNow, checkProviders, fetchAudit, fetchProviderKeys, fetchProviders, fetchSystemStatus, reconcileAll } from "../services/finance";
 import type { ProviderStatus } from "../types/finance";
 
 function Row({ label, value, tone }: { label: string; value: string; tone?: "ok" | "bad" | "warn" }) {
@@ -17,14 +18,6 @@ function Row({ label, value, tone }: { label: string; value: string; tone?: "ok"
     </div>
   );
 }
-
-const KEY_VARIABLE: Record<string, string> = {
-  twelvedata: "SLAIFI_TWELVEDATA_API_KEY",
-  tiingo: "SLAIFI_TIINGO_API_KEY",
-  fmp: "SLAIFI_FMP_API_KEY",
-  finnhub: "SLAIFI_FINNHUB_API_KEY",
-  alphavantage: "SLAIFI_ALPHAVANTAGE_API_KEY",
-};
 
 function providerState(p: ProviderStatus): { text: string; tone?: "ok" | "bad" | "warn" } {
   switch (p.state) {
@@ -47,11 +40,18 @@ export function SettingsPage() {
   const slai = useAsync((signal) => fetchSlaiStatus(signal), "slai");
   const audit = useAsync((signal) => fetchAudit(40, signal), "audit");
   const providers = useAsync((signal) => fetchProviders(signal), "providers");
+  const keys = useAsync((signal) => fetchProviderKeys(signal), "provider-keys");
   const check = useAction(checkProviders);
   const reconcile = useAction(reconcileAll);
   const backup = useAction(backupNow);
 
   const s = status.data;
+  const keyFor = (name: string) => keys.data?.keys.find((k) => k.name === name);
+  const keyChanged = () => {
+    keys.reload();
+    providers.reload();
+    status.reload();
+  };
 
   return (
     <AppShell currentPage="settings">
@@ -151,13 +151,15 @@ export function SettingsPage() {
           <p className="muted">
             SLAIFI asks these sources in order and uses the first that answers. If none can be reached it shows the last real
             price it saved (labelled with when it was observed); if there is none it says NOT AVAILABLE. Nothing is ever invented.
-            Each source needs its own free key, kept in SLAIFI's .env file (applications\slaifi\.env, copied from .env.example) or in the environment before SLAIFI starts. Keys are never shown here.
+            Each source needs its own free key. Paste it into the box in the table below and it is used straight away, no restart: it is saved on this computer in SLAIFI's
+            data folder and is never shown again. A key saved here is used instead of one in the .env file; removing it brings the .env key back. Keys can still be set in .env
+            (applications\slaifi\.env) or in the environment.
           </p>
           {providers.loading && !providers.data ? <Loading /> : null}
           {providers.error ? <Notice tone="error" onRetry={providers.reload}>{providers.error}</Notice> : null}
           {providers.data && !providers.data.configured ? (
             <Notice tone="warning" title="No market-data key is set">
-              Put at least one of the variables below in .env (three or more are recommended for failover), restart SLAIFI, then use Check providers. The start-up banner lists the .env files that were read.
+              Paste at least one key below (three or more are recommended for failover). Each source offers a free key on its own sign-up page.
             </Notice>
           ) : null}
           {providers.data ? (
@@ -171,7 +173,7 @@ export function SettingsPage() {
                     <th>Calls (min / today)</th>
                     <th>Last success</th>
                     <th>Last problem</th>
-                    <th>Key variable</th>
+                    <th>API key</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -196,7 +198,13 @@ export function SettingsPage() {
                         <td>{p.configured ? `${p.calls_last_minute} / ${p.calls_today}` : "—"}</td>
                         <td>{p.last_success_at ? dateTime(p.last_success_at) : "—"}</td>
                         <td>{p.last_error ? `${p.last_error}${p.last_error_at ? ` (${dateTime(p.last_error_at)})` : ""}` : "—"}</td>
-                        <td><code>{KEY_VARIABLE[p.name] ?? "—"}</code></td>
+                        <td>
+                          {keyFor(p.name) ? (
+                            <ProviderKeyEditor info={keyFor(p.name)!} onChanged={keyChanged} />
+                          ) : (
+                            <span className="muted">{keys.error ? "Keys can't be changed here right now." : "…"}</span>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -204,8 +212,11 @@ export function SettingsPage() {
               </table>
             </div>
           ) : null}
+          {keys.error ? <Notice tone="error" onRetry={keys.reload}>{keys.error}</Notice> : null}
           {check.error ? <Notice tone="error">{check.error}</Notice> : null}
         </section>
+
+        <PlatformFeesCard />
 
         <div className="dashboard-grid dashboard-grid--secondary">
           <section className="panel analysis-panel" aria-labelledby="appearance-title">

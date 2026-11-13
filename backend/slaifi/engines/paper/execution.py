@@ -1,7 +1,8 @@
 """Deterministic simulated order execution. Nothing here can place a real-money order.
 
 The provider quotation and the simulated fill are kept apart: the fill price includes slippage
-and the trade carries a commission, both taken from the strategy's configured cost assumptions.
+and the trade carries a commission (the strategy's proportional assumption plus the platform's flat
+fee per trade).
 Stale, last-known, closed-market or unavailable quotes are refused according to the policy.
 """
 
@@ -29,8 +30,10 @@ _CENT = Decimal("0.01")
 _ZERO = Decimal("0")
 
 
-def commission_for(gross: Decimal, costs: TransactionCosts) -> Decimal:
-    fee = max(gross * costs.commission_rate, costs.commission_minimum)
+def commission_for(gross: Decimal, costs: TransactionCosts, flat_fee: Decimal = _ZERO) -> Decimal:
+    """Proportional commission (with its minimum) plus the platform's flat fee per trade."""
+
+    fee = max(gross * costs.commission_rate, costs.commission_minimum) + flat_fee
     return fee.quantize(_CENT, rounding=ROUND_HALF_UP)
 
 
@@ -59,6 +62,8 @@ def evaluate_order(
     strategy: StrategyProfile | None = None,
     portfolio_drawdown: float | None = None,
     annualized_volatility: float | None = None,
+    flat_fee: Decimal = _ZERO,
+    whole_mix_verified: bool = False,
 ) -> OrderDecision:
     """Return a FILLED decision (with trade + audit details) or a REJECTED one with reasons."""
 
@@ -147,7 +152,7 @@ def evaluate_order(
         return _reject(request, Rejection(code, message))
 
     gross = (quantity * fill_price).quantize(_CENT, rounding=ROUND_HALF_UP)
-    fee = commission_for(gross, costs)
+    fee = commission_for(gross, costs, flat_fee)
     rejections: list[Rejection] = []
     name = request.asset.display_symbol
     if side is TradeSide.BUY:
@@ -179,8 +184,14 @@ def evaluate_order(
                 annualized_volatility=annualized_volatility,
                 portfolio_drawdown=portfolio_drawdown,
             ):
-                if finding.severity == "hard":
+                if finding.severity == "hard" and not (
+                    whole_mix_verified and finding.code == "concentration_hhi"
+                ):
                     rejections.append(Rejection(RejectionCode.STRATEGY_CONSTRAINT, finding.message))
+                elif finding.severity == "hard":
+                    # One step of a complete rebalance: the finished mix was checked against this
+                    # same limit, and an order-by-order view would block any large rebalance.
+                    warnings.append(finding.message + " (the finished mix was checked as a whole)")
                 else:
                     warnings.append(finding.message)
     elif side is TradeSide.SELL:
@@ -197,6 +208,14 @@ def evaluate_order(
                     RejectionCode.INSUFFICIENT_POSITION,
                     f"The order sells {quantity} but only {held} is held. To bet on a price fall "
                     "use Short instead.",
+                )
+            )
+        if snapshot.cash_balance + gross - fee < 0:
+            rejections.append(
+                Rejection(
+                    RejectionCode.INSUFFICIENT_CASH,
+                    f"The sale brings in {gross:.2f} but costs {fee:.2f} in fees, and only "
+                    f"{snapshot.cash_balance:.2f} cash is available to cover the difference.",
                 )
             )
     elif side is TradeSide.SHORT:

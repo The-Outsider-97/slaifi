@@ -50,6 +50,33 @@ class ExecutionPolicy:
             raise DomainValidationError("quantity_decimals must be between 0 and 8")
 
 
+MAX_PLATFORM_FEE = Decimal("1000")
+
+
+@dataclass(frozen=True, slots=True)
+class PlatformFees:
+    """What the trading platform charges: a flat amount per trade and per withdrawal.
+
+    These are cash amounts in the portfolio's currency (not percentages) and are chosen by the
+    person to mirror the platform they trade on. They sit on top of the strategy's proportional
+    slippage and commission assumptions.
+    """
+
+    per_trade: Decimal
+    per_withdrawal: Decimal
+
+    @classmethod
+    def none(cls) -> PlatformFees:
+        return cls(Decimal("0"), Decimal("0"))
+
+    def __post_init__(self) -> None:
+        for name, value in (("per_trade", self.per_trade), ("per_withdrawal", self.per_withdrawal)):
+            if not value.is_finite() or value < 0:
+                raise DomainValidationError(f"{name} fee must be zero or a positive amount")
+            if value > MAX_PLATFORM_FEE:
+                raise DomainValidationError(f"{name} fee cannot exceed {MAX_PLATFORM_FEE}")
+
+
 @dataclass(frozen=True, slots=True)
 class OrderRequest:
     """A simulated market order. Exactly one sizing mode must be used."""

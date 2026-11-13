@@ -66,15 +66,20 @@ deterministic engines never import them.
   budgets, last-known cache). SLAI offers no market-data provider, so nothing was duplicated.
 * Test doubles (`tests/support`) are not part of the shipped package.
 
-## Optional SLAI agents (Knowledge, Optimization, Learning)
+## Optional SLAI agents (Knowledge, Financial, Learning)
 
 | Need | SLAI component reused | Where |
 | --- | --- | --- |
 | Look up SLAIFI's own guides | `KnowledgeAgent` (`add_document` / `retrieve`) | `integrations/slai/knowledge.py` — no search index written in SLAIFI |
-| Portfolio weights under limits | `OptimizationAgent` / `QuadraticSolver` | `integrations/slai/optimizer.py` — SLAIFI builds the problem and re-checks the answer, it does not implement a solver |
+| Portfolio weights under limits, and the historical mean/covariance behind them | Financial agent (`data.ingest_observations`, `portfolio.optimize_allocation`, which delegates to the Optimization agent / `QuadraticSolver`) | `integrations/slai/financial.py` — SLAIFI hands over real closes and the limits and re-checks the answer. It has no solver and makes no optimizer call of its own. It does keep `engines/allocation.annualised_statistics`, used on purpose as the *independent* re-check and to show current-vs-suggested volatility and return, so the same moments are computed twice by design |
 | Keep measured outcomes in SLAI's learning memory | `LearningAgent` modes `observe` / `query` (`LearningSignal` contract) | `integrations/slai/learning.py` |
 | Agent runtime | the same factory/shared memory as reasoning (`SlaiFinancialReasoner.agent_for`) | `main.py` |
 
 Not duplicated: no second vector index, solver or learning memory. SLAIFI's own rule-based learning (track
 record and adaptation suggestions) stays where it is; the Learning agent is only a second consumer of the
 same measured outcomes.
+
+Also reused or kept single-sourced in this revision: the provider-key editor reuses the existing provider
+factory and `check_providers` (one `build_provider` per source, no second client); platform fees are one
+domain value (`PlatformFees`) applied by the paper service for trades and withdrawals, not per strategy;
+Apply goes through the existing `place_order`, so no order logic was duplicated.

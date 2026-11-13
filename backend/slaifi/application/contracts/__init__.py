@@ -6,6 +6,7 @@ from slaifi.application.contracts.agents import (
     AgentStatus,
     AllocationProblem,
     AllocationSolution,
+    FinancialAnalyst,
     KnowledgeAnswer,
     KnowledgeLibrary,
     KnowledgePassage,
@@ -14,7 +15,7 @@ from slaifi.application.contracts.agents import (
     LearningOutcome,
     LearningRecall,
     LearningShare,
-    PortfolioOptimizer,
+    PriceSeries,
 )
 from slaifi.application.contracts.persistence import (
     FinanceStore,
@@ -22,6 +23,7 @@ from slaifi.application.contracts.persistence import (
     ReconciliationIssue,
     ReconciliationReport,
 )
+from slaifi.application.contracts.provider_keys import ProviderKeys
 from slaifi.application.contracts.reasoning import (
     FinancialReasoner,
     ReasoningRequest,
@@ -41,11 +43,13 @@ from slaifi.domain.ledger import (
 )
 
 __all__ = [
+    "ProviderKeys",
     "AGENT_INFO",
     "AgentName",
     "AgentStatus",
     "AllocationProblem",
     "AllocationSolution",
+    "FinancialAnalyst",
     "AuditEntry",
     "FinanceStore",
     "FinancialReasoner",
@@ -58,7 +62,7 @@ __all__ = [
     "LearningMemory",
     "LearningActionSummary",
     "NullSafetyReviewer",
-    "PortfolioOptimizer",
+    "PriceSeries",
     "Proposal",
     "QuoteSource",
     "ReasoningRequest",

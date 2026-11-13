@@ -1,5 +1,6 @@
 """Central, location-independent SLAIFI runtime settings."""
 
+from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -66,6 +67,11 @@ class Settings(BaseSettings):
     # Paper trading. Real-money trading does not exist in SLAIFI and cannot be enabled.
     paper_allow_closed_market_execution: bool = False
     paper_max_quote_age_seconds: int = Field(default=900, ge=1, le=86_400)
+    # What the trading platform charges: a flat amount per trade and per withdrawal, in the
+    # portfolio's currency. These are the starting values; Settings → Trading platform costs
+    # changes them and the saved values take over.
+    paper_trade_fee: Decimal = Field(default=Decimal("1.00"), ge=0, le=1000)
+    paper_withdrawal_fee: Decimal = Field(default=Decimal("1.00"), ge=0, le=1000)
 
     # Optional JSON ledger containing actual portfolio state.
     portfolio_file: Path | None = None
@@ -85,8 +91,8 @@ class Settings(BaseSettings):
     # "not available" without affecting the deterministic finance.
     slai_knowledge_enabled: bool = False
     slai_knowledge_agent: str = "knowledge"
-    slai_optimization_enabled: bool = False
-    slai_optimization_agent: str = "optimization"
+    slai_financial_enabled: bool = False
+    slai_financial_agent: str = "financial"
     slai_learning_enabled: bool = False
     slai_learning_agent: str = "learning"
 

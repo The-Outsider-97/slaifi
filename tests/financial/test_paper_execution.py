@@ -126,3 +126,70 @@ def test_selling_more_than_held_is_rejected() -> None:
 def test_currency_mismatch_is_rejected_without_conversion() -> None:
     eur = quote(currency=CurrencyCode("EUR"))
     assert RejectionCode.CURRENCY_MISMATCH in codes(run(order(), eur))
+
+
+def test_flat_platform_fee_is_added_to_the_proportional_commission() -> None:
+    costs = TransactionCosts(commission_rate=Decimal("0.001"), commission_minimum=Decimal("0"))
+    assert commission_for(Decimal("1000"), costs) == Decimal("1.00")
+    assert commission_for(Decimal("1000"), costs, Decimal("2.50")) == Decimal("3.50")
+    # With no proportional commission the flat fee is the whole cost, whatever the order size.
+    free = TransactionCosts(commission_rate=Decimal("0"))
+    assert commission_for(Decimal("5"), free, Decimal("1")) == Decimal("1.00")
+    assert commission_for(Decimal("50000"), free, Decimal("1")) == Decimal("1.00")
+
+
+def test_order_fill_carries_the_flat_fee() -> None:
+    free = TransactionCosts(commission_rate=Decimal("0"), slippage_rate=Decimal("0"))
+    decision = evaluate_order(
+        order(),
+        snapshot=snapshot(),
+        quote=quote(),
+        policy=ExecutionPolicy(),
+        costs=free,
+        now=NOW,
+        trade_id="t",
+        flat_fee=Decimal("1"),
+    )
+    assert decision.status is OrderStatus.FILLED and decision.execution is not None
+    assert decision.execution.commission == Decimal("1.00")
+    assert decision.execution.net_cash_effect == Decimal("-601.00")
+
+
+def test_platform_fees_validate() -> None:
+    import pytest
+
+    from slaifi.domain.paper import PlatformFees
+    from slaifi.domain.utils import DomainValidationError
+
+    assert PlatformFees.none() == PlatformFees(Decimal("0"), Decimal("0"))
+    for bad in (Decimal("-1"), Decimal("1001"), Decimal("NaN")):
+        with pytest.raises(DomainValidationError):
+            PlatformFees(bad, Decimal("0"))
+
+
+def test_a_sale_whose_fee_exceeds_the_available_cash_is_refused() -> None:
+    from slaifi.domain.portfolio import Position, PositionValuation
+
+    free = TransactionCosts(commission_rate=Decimal("0"), slippage_rate=Decimal("0"))
+    position = Position(ASSET, Decimal("10"), Decimal("60"), Decimal("0"), USD)
+    valuation = PositionValuation(position, Decimal("60"), Decimal("600"), Decimal("0"), 1.0)
+    held = PortfolioSnapshot(
+        "p", NOW, USD, Decimal("0"), (valuation,), Decimal("600"), Decimal("600")
+    )
+
+    def sell(quantity: str) -> object:
+        return evaluate_order(
+            order(side=TradeSide.SELL, quantity=Decimal(quantity)),
+            snapshot=held,
+            quote=quote(price=Decimal("0.50")),
+            policy=ExecutionPolicy(),
+            costs=free,
+            now=NOW,
+            trade_id="t",
+            flat_fee=Decimal("1"),
+        )
+
+    tiny = sell("1")  # 0.50 of proceeds against a 1.00 fee and no cash
+    assert tiny.status is OrderStatus.REJECTED  # type: ignore[attr-defined]
+    assert tiny.rejections[0].code is RejectionCode.INSUFFICIENT_CASH  # type: ignore[attr-defined]
+    assert sell("10").status is OrderStatus.FILLED  # type: ignore[attr-defined]

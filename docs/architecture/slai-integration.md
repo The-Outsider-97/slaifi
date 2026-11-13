@@ -92,32 +92,36 @@ The guardrails state that Domain/Engine values are authoritative. The agent may 
 The public API exposes only safe provenance: status, interpretation, agent identity/version, strategy, confidence, outcome, validation status, degraded flag, correlation ID, request ID and warnings. Raw Reasoning Agent output and SharedMemory keys stay internal.
 
 
-## Optional agents: Knowledge, Optimization, Learning
+## Optional agents: Knowledge, Financial, Learning
 
 Beyond reasoning, quality and safety, three more SLAI agents can be used. They are **opt-in and off by
 default** (Settings → *Extra help from SLAI*; first-start defaults `SLAIFI_SLAI_KNOWLEDGE_ENABLED`,
-`…_OPTIMIZATION_ENABLED`, `…_LEARNING_ENABLED`, all `false`). The choice is stored in SLAIFI's own
+`…_FINANCIAL_ENABLED`, `…_LEARNING_ENABLED`, all `false`). The choice is stored in SLAIFI's own
 `settings` table, a change is written to the audit log (`agent.enabled` / `agent.disabled`), and
-`SLAIFI_SLAI_ENABLED=false` still turns every SLAI agent off. A switched-off agent is never created.
+`SLAIFI_SLAI_ENABLED=false` still turns every SLAI agent off. A switched-off agent is never created. The former
+Optimization switch is read as the Financial switch when no Financial choice was saved; the old
+`SLAIFI_SLAI_OPTIMIZATION_*` variables are no longer read.
 
 Rules that hold for all three:
 
 * **Advice and records only.** Nothing an agent returns places an order, changes a strategy or alters
-  a number SLAIFI computes. Optimization output is re-checked by SLAIFI's own engine
+  a number SLAIFI computes. Financial-agent output is re-checked by SLAIFI's own engine
   (`engines/allocation.verify_allocation`) and shown only if every check passes; otherwise the
-  result is `rejected` with the reason.
+  result is `rejected` with the reason. The one exception to "nothing places an order" is the person pressing
+  **Apply** / **Apply all** on a checked suggestion: SLAIFI then places ordinary simulated orders through
+  the paper-trading service (same checks, same fees), not the agent.
 * **Honest when absent.** If an agent cannot run (module missing, PyTorch or SciPy not installed,
   failure) the feature shows NOT AVAILABLE with the reason and the rest of SLAIFI is unaffected.
   Settings shows each agent as *Off*, *On (not used yet)*, *On and working* or *On, but SLAI could not run it*.
 * **Layering unchanged.** Ports and result types live in `application/contracts/agents.py`; the adapters
-  in `integrations/slai/{knowledge,optimizer,learning}.py` take callables (switch, report, agent
+  in `integrations/slai/{knowledge,financial,learning}.py` take callables (switch, report, agent
   provider) rather than importing application services. They share the single SLAI runtime created for
   reasoning (`SlaiFinancialReasoner.agent_for`).
 
 | Agent | What SLAIFI uses it for | SLAI calls | Notes |
 | --- | --- | --- | --- |
 | Knowledge | "Look something up" on the Advisor page: passages from SLAIFI's own `docs/` | `add_document`, `retrieve` | Indexes only SLAIFI's markdown, by heading (ids `slaifi:<file>#n`); results are filtered to that prefix. No user data, no web. |
-| Optimization | "Suggested allocation" on Paper trading | `optimize` with a long-only mean-variance quadratic problem | Statistics are historical, annualised from real aligned daily returns (≥ 60 observations); not a forecast. Bounds and the budget come from the strategy (position cap, cash reserve). Needs SciPy in SLAI's `QuadraticSolver`. |
+| Financial | "Suggested allocation" on Paper trading, with **Apply** per line and **Apply all** | `data.ingest_observations` (the real daily closes SLAIFI holds, with their source), then `portfolio.optimize_allocation` (the agent estimates the historical moments and delegates to SLAI's Optimization agent), `data.counts` for Check | Statistics are historical, annualised from real aligned daily returns (≥ 60 observations); not a forecast. SLAIFI's cash reserve is mapped onto the agent's fully-invested problem by scaling (`w = b·v`, cap `/b`, `γ = b/λ`; "steadiest" is a very large γ). SLAIFI re-checks the answer itself (`verify_allocation`). Needs SciPy for the solver. Not used: the agent's other operations (VaR/ES, beta/alpha, rebalance amounts and costs, …) because SLAIFI already has its own tested engines for what it shows; a Risk check through the agent is possible later. |
 | Learning | "Share results with SLAI" on Strategies & goals | `perform_task` modes `observe`, `query` | Sends each *scored* recommendation as an `outcome` signal with metric `forward_return`, `validated=false` (so it can never train the agent's selector or its reward statistics) and a stable id (`slaifi:outcome:<record id>`), so repeats are duplicates. SLAIFI's own rule-based learning does not read anything back. Needs PyTorch (the agent imports it). |
 ## Failure semantics
 
@@ -136,3 +140,14 @@ Runtime unavailable and required
 ```
 
 A healthy agent process does not automatically make an individual reasoning result healthy: Phase-3 `degraded` and validation status are reflected in the per-result SLAIFI status.
+
+### Applying a suggestion
+
+`POST paper/portfolios/{id}/allocation/apply` takes only a `suggestion_id` (and optionally the symbols to
+apply). The plan stays on the server, so the browser cannot change an amount. It is refused if the
+portfolio changed since the suggestion (staleness marker) or after the plan expired. Sells go first so
+their cash is available; each order has a deterministic client order id, so pressing Apply twice places
+one order. Every order passes through `PaperTradingService.place_order` (market-hours, quote-age,
+strategy-limit and cash checks, platform fee). When the *whole* remaining plan is applied the per-order
+concentration test is waived only because the complete mix has already been verified; a single **Apply**
+is always checked line by line.

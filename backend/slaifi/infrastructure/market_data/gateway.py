@@ -151,6 +151,32 @@ class MultiSourceGateway:
             )
         return rows
 
+    @property
+    def providers(self) -> tuple[HttpMarketProvider, ...]:
+        return tuple(self._providers)
+
+    async def replace_providers(
+        self,
+        providers: Sequence[HttpMarketProvider],
+        unconfigured: Sequence[type[HttpMarketProvider]] = (),
+    ) -> None:
+        """Swap the configured sources (a key was added, changed or removed in Settings).
+
+        An adapter that is kept keeps its health and request budget; a new one starts fresh, so a
+        corrected key is not held back by an earlier rejection. Cached real data stays valid.
+        """
+
+        previous = self._providers
+        self._providers = list(providers)
+        self._unconfigured = list(unconfigured)
+        self._health = {p.name: self._health.get(p.name, _Health()) for p in self._providers}
+        for p in self._providers:
+            if p not in previous:
+                self._health[p.name] = _Health()
+        for p in previous:
+            if p not in self._providers:
+                await p.close()
+
     async def close(self) -> None:
         for p in self._providers:
             await p.close()
@@ -397,12 +423,17 @@ class MultiSourceGateway:
         return SearchFetch((), FetchInfo(None, attempts=tuple(attempts)))
 
     # ------------------------------------------------------------------ checks
-    async def check_providers(self) -> Sequence[ProviderCheck]:
-        """Make one real quote request per configured provider (used by Settings → Check)."""
+    async def check_providers(self, only: str | None = None) -> Sequence[ProviderCheck]:
+        """Make one real quote request per configured provider (used by Settings → Check).
+
+        ``only`` limits the check to one source, so saving a key does not spend the others' free requests.
+        """
 
         checks: list[ProviderCheck] = []
         probe = AssetId(CHECK_SYMBOL)
         for p in self._providers:
+            if only is not None and p.name != only:
+                continue
             started = time.perf_counter()
             result, attempt = await self._call(p, partial(p.get_quotes, [probe]))
             latency = (time.perf_counter() - started) * 1000.0
@@ -434,7 +465,8 @@ class MultiSourceGateway:
                     )
                 )
         for cls in self._unconfigured:
-            checks.append(ProviderCheck(cls.name, False, False, "No API key configured."))
+            if only is None or cls.name == only:
+                checks.append(ProviderCheck(cls.name, False, False, "No API key configured."))
         return checks
 
     # ------------------------------------------------------------------ plain provider calls

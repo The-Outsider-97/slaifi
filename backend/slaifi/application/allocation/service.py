@@ -1,28 +1,33 @@
 """Suggest a steadier mix of holdings, within the strategy's limits.
 
-This is advice built from real price history. The optimizer (SLAI's Optimization agent) proposes
-weights; SLAIFI re-checks them against the strategy and shows the result next to the current mix.
-Nothing is ordered: the person decides, and any order still goes through the normal checks.
+This is advice built from real price history. SLAI's Financial agent (which solves through SLAI's
+Optimization agent) proposes weights; SLAIFI re-checks them against the strategy and shows the
+result next to the current mix. Nothing is ordered here: the person decides, and any order still
+goes through the normal checks.
 """
 
 from __future__ import annotations
 
 import asyncio
+import uuid
+from collections import OrderedDict
 from collections.abc import Callable
-from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from dataclasses import dataclass, field
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 from slaifi.application.contracts import (
     AllocationProblem,
     FinanceStore,
-    PortfolioOptimizer,
+    FinancialAnalyst,
+    PriceSeries,
 )
 from slaifi.application.market import MarketDataService
 from slaifi.application.paper import PaperTradingService
 from slaifi.application.strategies import StrategyService
-from slaifi.core.utils.errors import SlaifiError
+from slaifi.core.utils.errors import ConflictError, NotFoundError, SlaifiError
 from slaifi.domain.assets import AssetId
+from slaifi.domain.portfolio import TradeSide
 from slaifi.engines.allocation import (
     MIN_RETURN_OBSERVATIONS,
     AllocationCheck,
@@ -38,6 +43,10 @@ from slaifi.engines.strategy import asset_eligibility
 MAX_ASSETS = 20
 HISTORY_DAYS = 420
 FOCUSES = ("steadiest", "strategy")
+# A change smaller than this share of the portfolio is not worth an order (and its fee).
+MIN_CHANGE = 0.005
+PLAN_TTL = timedelta(minutes=15)
+MAX_PLANS = 50
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +57,7 @@ class AllocationLine:
     suggested_weight: float
     change: float
     amount: Decimal | None  # money to move to reach the suggested weight (+ buy, − sell)
+    side: str | None = None  # "buy" / "sell" when an order would be placed, else None (no change)
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +87,59 @@ class AllocationSuggestion:
     window_end: date | None = None
     cash_weight: float | None = None
     generated_at: datetime | None = None
+    agent_notes: tuple[str, ...] = ()
+    suggestion_id: str | None = None  # what Apply refers to; the orders are rebuilt from it here
+    expires_at: datetime | None = None
+    fee_per_trade: Decimal | None = None
+    plan_notes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class _PlannedOrder:
+    asset: AssetId
+    display: str
+    side: TradeSide
+    notional: Decimal | None
+    close_position: bool
+
+
+@dataclass(slots=True)
+class _Plan:
+    """What a suggestion would trade. Kept here so Apply never relies on amounts from the browser."""
+
+    portfolio_id: str
+    expires_at: datetime
+    marker: tuple[int, int]
+    orders: dict[str, _PlannedOrder]
+    done: set[str] = field(default_factory=set)
+
+
+@dataclass(frozen=True, slots=True)
+class AppliedOrder:
+    """``status``: ``filled`` · ``rejected`` · ``already_applied``."""
+
+    symbol: str
+    display: str
+    side: str
+    status: str
+    detail: str | None = None
+    quantity: Decimal | None = None
+    price: Decimal | None = None
+    fee: Decimal | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AppliedAllocation:
+    suggestion_id: str
+    orders: tuple[AppliedOrder, ...]
+
+    @property
+    def filled(self) -> int:
+        return sum(1 for o in self.orders if o.status == "filled")
+
+    @property
+    def fees(self) -> Decimal:
+        return sum((o.fee or Decimal(0) for o in self.orders if o.status == "filled"), Decimal(0))
 
 
 class AllocationService:
@@ -86,7 +149,7 @@ class AllocationService:
         strategies: StrategyService,
         market: MarketDataService,
         store: FinanceStore,
-        optimizer: PortfolioOptimizer,
+        analyst: FinancialAnalyst,
         *,
         enabled: Callable[[], bool],
         clock: Callable[[], datetime] | None = None,
@@ -95,9 +158,125 @@ class AllocationService:
         self._strategies = strategies
         self._market = market
         self._store = store
-        self._optimizer = optimizer
+        self._analyst = analyst
         self._enabled = enabled
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._plans: OrderedDict[str, _Plan] = OrderedDict()
+        self._apply_lock = asyncio.Lock()
+
+    # ------------------------------------------------------------------ apply
+    def _marker(self, portfolio_id: str) -> tuple[int, int]:
+        """Trades and cash movements so far: if it changes, the suggested amounts are out of date."""
+
+        try:
+            return (
+                len(self._store.list_trades(portfolio_id)),
+                len(self._store.list_cash_flows(portfolio_id)),
+            )
+        except KeyError:  # not a portfolio: the caller's next step reports that properly
+            return (0, 0)
+
+    def _remember(self, plan: _Plan) -> str:
+        now = self._clock()
+        for key in [k for k, p in self._plans.items() if p.expires_at <= now]:
+            del self._plans[key]
+        suggestion_id = f"S-{uuid.uuid4().hex[:12]}"
+        self._plans[suggestion_id] = plan
+        while len(self._plans) > MAX_PLANS:
+            self._plans.popitem(last=False)
+        return suggestion_id
+
+    async def apply(
+        self, portfolio_id: str, suggestion_id: str, symbols: tuple[str, ...] | None = None
+    ) -> AppliedAllocation:
+        """Place the paper orders for a suggestion: all of them, or only ``symbols``.
+
+        Sells go first so their cash is there for the buys. Every order goes through the normal
+        paper-trading path (fresh quote, strategy limits, platform fees); one being refused does
+        not stop the others. Sending the same request twice places nothing twice.
+        """
+
+        async with self._apply_lock:
+            plan = self._plans.get(suggestion_id)
+            if (
+                plan is None
+                or plan.portfolio_id != portfolio_id
+                or plan.expires_at <= self._clock()
+            ):
+                raise NotFoundError(
+                    "That suggestion has expired or no longer exists. Ask for a new one."
+                )
+            if self._marker(portfolio_id) != plan.marker:
+                raise ConflictError(
+                    "The portfolio has changed since this suggestion was made, so its amounts "
+                    "are out of date. Ask for a new one."
+                )
+            wanted = list(plan.orders) if symbols is None else [s.upper() for s in symbols]
+            chosen = {s.upper(): s for s in plan.orders}
+            unknown = [s for s in wanted if s not in chosen]
+            if unknown:
+                raise NotFoundError(
+                    f"{', '.join(unknown)} has nothing to apply in this suggestion."
+                )
+            ordered = sorted(
+                (chosen[s] for s in dict.fromkeys(wanted)),
+                key=lambda s: plan.orders[s].side is not TradeSide.SELL,
+            )
+            # Concentration is judged on the finished mix, which SLAIFI checked when it made the
+            # suggestion, only when every remaining order of the suggestion is being placed.
+            complete = set(plan.orders) - plan.done <= set(ordered)
+            results: list[AppliedOrder] = []
+            for key in ordered:
+                order = plan.orders[key]
+                if key in plan.done:
+                    results.append(
+                        AppliedOrder(key, order.display, order.side.value, "already_applied")
+                    )
+                    continue
+                outcome = await self._paper.place_order(
+                    portfolio_id,
+                    symbol=order.asset.symbol,
+                    side=order.side,
+                    notional=order.notional,
+                    close_position=order.close_position,
+                    client_order_id=f"alloc-{suggestion_id}-{key}"[:80],
+                    exchange=order.asset.exchange,
+                    asset_class=order.asset.asset_class,
+                    whole_mix_verified=complete,
+                )
+                decision = outcome.decision
+                if decision.trade is not None and decision.execution is not None:
+                    plan.done.add(key)
+                    results.append(
+                        AppliedOrder(
+                            key,
+                            order.display,
+                            order.side.value,
+                            "filled",
+                            quantity=decision.trade.quantity,
+                            price=decision.execution.execution_price,
+                            fee=decision.trade.fee,
+                        )
+                    )
+                else:
+                    reason = "; ".join(r.message for r in decision.rejections) or "Order refused."
+                    results.append(
+                        AppliedOrder(key, order.display, order.side.value, "rejected", reason)
+                    )
+            plan.marker = self._marker(portfolio_id)
+            self._store.append_audit(
+                at=self._clock(),
+                actor="user",
+                action="paper.allocation.applied",
+                subject=portfolio_id,
+                detail={
+                    "suggestion_id": suggestion_id,
+                    "symbols": [r.symbol for r in results],
+                    "filled": sum(1 for r in results if r.status == "filled"),
+                    "rejected": sum(1 for r in results if r.status == "rejected"),
+                },
+            )
+            return AppliedAllocation(suggestion_id, tuple(results))
 
     async def suggest(
         self,
@@ -107,6 +286,7 @@ class AllocationService:
         include_watchlist: bool = False,
         focus: str = "steadiest",
     ) -> AllocationSuggestion:
+        marker = self._marker(portfolio_id)
         view = await self._paper.view(portfolio_id, record=False)
         strategy = self._paper.strategy_for(view.portfolio)
 
@@ -124,7 +304,7 @@ class AllocationService:
         if focus not in FOCUSES:
             focus = "steadiest"
         if not self._enabled():
-            return result("disabled", "The Optimization agent is switched off in Settings.")
+            return result("disabled", "The Financial agent is switched off in Settings.")
 
         total = view.snapshot.total_value
         excluded: list[tuple[str, str]] = []
@@ -164,6 +344,7 @@ class AllocationService:
                 candidates[symbol] = asset
 
         closes: dict[str, list[tuple[date, float]]] = {}
+        real: dict[str, PriceSeries] = {}
 
         async def history(symbol: str, asset: AssetId) -> None:
             try:
@@ -176,11 +357,18 @@ class AllocationService:
                     (asset.display_symbol, "NOT AVAILABLE: only saved (last known) prices exist.")
                 )
                 return
-            series = [(b.start_at.date(), float(b.close)) for b in view_.bars if b.close > 0]
+            exact = [(b.start_at.date(), b.close) for b in view_.bars if b.close > 0]
+            series = [(day, float(close)) for day, close in exact]
             if len(series) < MIN_RETURN_OBSERVATIONS + 1:
                 excluded.append((asset.display_symbol, "NOT AVAILABLE: too little price history."))
                 return
             closes[symbol] = series
+            real[symbol] = PriceSeries(
+                symbol,
+                tuple(exact),
+                view_.provenance.source or "market data",
+                str(asset.currency or view.portfolio.base_currency),
+            )
 
         await asyncio.gather(*(history(s, a) for s, a in candidates.items()))
         usable = {s: candidates[s] for s in candidates if s in closes}
@@ -214,10 +402,29 @@ class AllocationService:
                 excluded=tuple(excluded),
                 observations=observations,
             )
-        problem = AllocationProblem(
-            names, mean, cov, lower, upper, budget, return_preference(strategy, focus)
+        # The agent is given exactly the closes the statistics were built from: the dates on which
+        # every asset has a real close, so nothing is filled in.
+        common_days = set.intersection(*(set(d for d, _ in closes[n]) for n in names))
+        series = tuple(
+            PriceSeries(
+                real[n].symbol,
+                tuple((d, c) for d, c in real[n].closes if d in common_days),
+                real[n].source,
+                real[n].currency,
+            )
+            for n in names
         )
-        solved = await asyncio.to_thread(self._optimizer.solve, problem)
+        problem = AllocationProblem(
+            names,
+            mean,
+            cov,
+            lower,
+            upper,
+            budget,
+            return_preference(strategy, focus),
+            series,
+        )
+        solved = await asyncio.to_thread(self._analyst.solve, problem)
         window = [pt[0] for pt in closes[names[0]]]
         common = dict(
             excluded=tuple(excluded),
@@ -225,6 +432,7 @@ class AllocationService:
             window_start=window[0],
             window_end=window[-1],
             solver=solved.solver,
+            agent_notes=solved.warnings,
         )
         if solved.status != "ok" or solved.weights is None:
             status = (
@@ -257,18 +465,72 @@ class AllocationService:
             s: (float(held_value[s] / total) if total > 0 and s in held_value else 0.0)
             for s in names
         }
-        lines = tuple(
-            AllocationLine(
-                symbol=s,
-                display=usable[s].display_symbol,
-                current_weight=current[s],
-                suggested_weight=w,
-                change=w - current[s],
-                amount=(Decimal(str(w - current[s])) * total).quantize(Decimal("0.01"))
-                if total > 0
-                else None,
+        rows: list[tuple[str, float, float, Decimal | None, TradeSide | None]] = []
+        for s, w in zip(names, weights, strict=True):
+            change = w - current[s]
+            amount = (Decimal(str(change)) * total).quantize(Decimal("0.01")) if total > 0 else None
+            side: TradeSide | None = None
+            if amount is not None and abs(change) >= MIN_CHANGE and abs(amount) >= Decimal("1"):
+                side = TradeSide.BUY if change > 0 else TradeSide.SELL
+            rows.append((s, w, change, amount, side))
+
+        # Every order pays the platform's flat fee (plus the strategy's proportional commission) and
+        # a sale receives a little less than its mark because of slippage. The suggested weights do
+        # not know about these costs, so trim the buys by them (the part that would eat into the
+        # cash reserve) rather than have the last order refused for leaving too little cash.
+        fee = self._paper.platform_fees().per_trade
+        costs = strategy.costs
+        order_count = sum(1 for r in rows if r[4] is not None)
+        buy_total = sum((r[3] for r in rows if r[4] is TradeSide.BUY and r[3]), Decimal(0))
+        sell_total = sum((-r[3] for r in rows if r[4] is TradeSide.SELL and r[3]), Decimal(0))
+        trim = Decimal(0)
+        notes: list[str] = []
+        if order_count and buy_total > 0:
+            fees_total = fee * order_count + costs.commission_rate * (buy_total + sell_total)
+            keep = Decimal(str(1 - strategy.cash_reserve_rate))
+            trim = min(
+                (fees_total * keep + costs.slippage_rate * sell_total + Decimal("0.01")).quantize(
+                    Decimal("0.01")
+                ),
+                buy_total / 2,
             )
-            for s, w in zip(names, weights, strict=True)
+            if fees_total > 0:
+                notes.append(
+                    f"The {order_count} order(s) cost about {fees_total:.2f} in fees; the buys are "
+                    f"reduced by {trim:.2f} in total so the cash reserve still holds afterwards."
+                )
+        factor = (buy_total - trim) / buy_total if buy_total > 0 else Decimal(1)
+
+        lines_: list[AllocationLine] = []
+        planned: dict[str, _PlannedOrder] = {}
+        for s, w, change, amount, side in rows:
+            if amount is not None and side is TradeSide.BUY:
+                amount = (amount * factor).quantize(Decimal("0.01"))
+            if side is not None and amount is not None:
+                closing = side is TradeSide.SELL and w < 1e-6
+                planned[s.upper()] = _PlannedOrder(
+                    usable[s],
+                    usable[s].display_symbol,
+                    side,
+                    None if closing else abs(amount),
+                    closing,
+                )
+            lines_.append(
+                AllocationLine(
+                    symbol=s,
+                    display=usable[s].display_symbol,
+                    current_weight=current[s],
+                    suggested_weight=w,
+                    change=change,
+                    amount=amount,
+                    side=side.value if side else None,
+                )
+            )
+        lines = tuple(lines_)
+        now = self._clock()
+        expires = now + PLAN_TTL
+        suggestion_id = (
+            self._remember(_Plan(portfolio_id, expires, marker, planned)) if planned else None
         )
         current_vector = [current[s] for s in names]
         if held_dropped or sum(current_vector) <= 0:
@@ -290,5 +552,9 @@ class AllocationService:
             suggested=AllocationStats(s_vol, s_ret),
             checks=checks,
             cash_weight=1.0 - sum(weights),
+            suggestion_id=suggestion_id,
+            expires_at=expires if suggestion_id else None,
+            fee_per_trade=fee,
+            plan_notes=tuple(notes),
             **common,
         )

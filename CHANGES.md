@@ -58,7 +58,16 @@ several parser phrasings; watchlist removal by symbol.
 * **Speed**: UI bundle for the first page about 400 KB → about 87 KB transferred (gzip + route-level code splitting); hashed UI files are cached for a year so a reload downloads nothing; the Market overview no longer re-runs instrument search every load for symbols no provider can classify (retried every 5 minutes); the chart's series requests are de-duplicated and cached for the session and drawn from at most about 700 points.
 * **Fixed**: the order ticket kept the previous portfolio's preview/result after switching portfolio (and a pending preview could be confirmed against the other portfolio); a bar without a close was drawn as a price of 0.
 
-## Optional SLAI agents: Knowledge, Optimization, Learning (this revision)
+## Financial agent, keys in Settings, Apply, platform costs (this revision)
+
+* **SLAI's Financial agent replaces the Optimization adapter.** "Suggested allocation" now sends the real daily closes to the Financial agent, which estimates the historical moments and optimises; SLAIFI re-checks the answer. The Settings switch is *Financial* (an earlier Optimization choice carries over; `SLAIFI_SLAI_OPTIMIZATION_*` are no longer read, use `SLAIFI_SLAI_FINANCIAL_*`). Other Financial-agent operations (VaR/ES, beta/alpha, rebalance costs) are not used because SLAIFI has its own tested engines for those; this is stated rather than hidden.
+* **Apply / Apply all.** Each suggested line has **Apply**, and **Apply all (n)** asks for confirmation (order count and fees) before placing simulated orders, sells first, safe to press twice, refused if the portfolio changed since the suggestion.
+* **API keys in Settings.** Type, replace or remove a key per market-data source; it is stored owner-only in the data folder, overrides `.env`, and is never displayed, returned, logged or audited. Removing it falls back to `.env`. Each source can be checked on its own.
+* **Platform costs.** Flat fee per trade and per withdrawal (default 1.00 each, in the portfolio's currency), editable in Settings, applied to fills and withdrawals, shown in the order ticket, withdrawal form and Apply confirmation. The default proportional commission is now 0 so a trade costs exactly the platform fee; saved strategies keep their values. Back-tests do not include the flat fee.
+* New API: `POST paper/portfolios/{id}/allocation/apply`, `GET/PUT paper/fees`, `GET/PUT/DELETE system/provider-keys[/{name}]`, `POST system/providers/check?provider=`.
+* Fixed: tables on Settings and in the allocation panel no longer push the page wider than a phone screen.
+
+## Optional SLAI agents: Knowledge, Optimization (now Financial), Learning (earlier revision)
 
 * **Opt-in, off by default, never forced.** Settings → *Extra help from SLAI* has a switch and a Check button per agent. The choice is remembered, every change is audited, and a missing or failing agent shows NOT AVAILABLE with the reason while everything else works as before. Agents only advise or keep records: nothing is ordered and no SLAIFI number changes.
 * **Knowledge** (Advisor page, "Look something up"): passages from SLAIFI's own guides, with their source. Never reads your data or the web.

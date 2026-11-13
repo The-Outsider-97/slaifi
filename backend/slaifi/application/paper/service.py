@@ -40,6 +40,7 @@ from slaifi.domain.paper import (
     OrderRequest,
     OrderStatus,
     PaperPortfolio,
+    PlatformFees,
     Rejection,
     RejectionCode,
 )
@@ -52,6 +53,7 @@ from slaifi.domain.portfolio import (
     TradeSide,
 )
 from slaifi.domain.strategies import StrategyProfile
+from slaifi.domain.utils import DomainValidationError
 from slaifi.engines.features import simple_returns
 from slaifi.engines.paper import evaluate_order
 from slaifi.engines.portfolio import (
@@ -67,6 +69,8 @@ MAX_AMOUNT = Decimal("1000000000000")
 _CENT = Decimal("0.01")
 _ZERO = Decimal("0")
 VIEW_RECORD_INTERVAL_SECONDS = 900
+_TRADE_FEE_KEY = "paper.fee.per_trade"
+_WITHDRAWAL_FEE_KEY = "paper.fee.per_withdrawal"
 
 
 def _utc_now() -> datetime:
@@ -157,6 +161,7 @@ class PaperTradingService:
         policy: ExecutionPolicy | None = None,
         clock: Callable[[], datetime] = _utc_now,
         storage_status: str = "ok",
+        default_fees: PlatformFees | None = None,
     ) -> None:
         self._store = store
         self._market = market
@@ -165,6 +170,55 @@ class PaperTradingService:
         self._clock = clock
         self._lock = asyncio.Lock()
         self._storage_status = storage_status
+        self._default_fees = default_fees or PlatformFees.none()
+
+    # ------------------------------------------------------------------ platform fees
+    def platform_fees(self) -> PlatformFees:
+        """The saved fees, or the configured starting values until the person changes them."""
+
+        def saved(key: str, fallback: Decimal) -> Decimal:
+            raw = self._store.get_setting(key)
+            try:
+                return Decimal(raw) if raw is not None else fallback
+            except ArithmeticError:
+                return fallback
+
+        return PlatformFees(
+            saved(_TRADE_FEE_KEY, self._default_fees.per_trade),
+            saved(_WITHDRAWAL_FEE_KEY, self._default_fees.per_withdrawal),
+        )
+
+    def set_platform_fees(
+        self, *, per_trade: Decimal | None = None, per_withdrawal: Decimal | None = None
+    ) -> PlatformFees:
+        """Change one or both fees (zero is allowed: a platform without them)."""
+
+        current = self.platform_fees()
+        try:
+            new = PlatformFees(
+                (per_trade if per_trade is not None else current.per_trade).quantize(_CENT),
+                (per_withdrawal if per_withdrawal is not None else current.per_withdrawal).quantize(
+                    _CENT
+                ),
+            )
+        except (DomainValidationError, ArithmeticError) as exc:
+            raise ValidationError(str(exc)) from exc
+        with self._store.transaction():
+            self._store.set_setting(_TRADE_FEE_KEY, str(new.per_trade))
+            self._store.set_setting(_WITHDRAWAL_FEE_KEY, str(new.per_withdrawal))
+            self._store.append_audit(
+                at=self._clock(),
+                actor="user",
+                action="paper.fees.changed",
+                subject="platform",
+                detail={
+                    "per_trade": str(new.per_trade),
+                    "per_withdrawal": str(new.per_withdrawal),
+                    "previous_per_trade": str(current.per_trade),
+                    "previous_per_withdrawal": str(current.per_withdrawal),
+                },
+            )
+        return new
 
     # ------------------------------------------------------------------ guards
     def _require_storage(self) -> None:
@@ -331,7 +385,9 @@ class PaperTradingService:
         all_positions = build_positions(ledger.trades)
         realized = sum((p.realized_pnl for p in all_positions), _ZERO)
         unrealized = sum((v.unrealized_pnl for v in snapshot.positions), _ZERO)
-        fees = sum((s.trade.fee for s in stored_trades), _ZERO)
+        fees = sum((s.trade.fee for s in stored_trades), _ZERO) + sum(
+            (f.amount for f in ledger.cash_flows if f.kind is CashFlowKind.FEE), _ZERO
+        )
         slippage = sum(
             (
                 (s.execution.slippage_per_unit * s.trade.quantity) if s.execution else _ZERO
@@ -417,31 +473,48 @@ class PaperTradingService:
         async with self._lock:
             current = await self.view(portfolio_id, record=False)
             now = self._clock()
+            fee = self.platform_fees().per_withdrawal if kind is CashFlowKind.WITHDRAWAL else _ZERO
             if kind is CashFlowKind.WITHDRAWAL:
-                if value > current.snapshot.cash_balance:
+                fee_text = f" plus the {fee:.2f} withdrawal fee" if fee > 0 else ""
+                if value + fee > current.snapshot.cash_balance:
                     raise ValidationError(
-                        f"cannot withdraw {value}: only {current.snapshot.cash_balance:.2f} cash is available"
+                        f"cannot withdraw {value}{fee_text}: only "
+                        f"{current.snapshot.cash_balance:.2f} cash is available"
                     )
                 strategy = self.strategy_for(portfolio)
                 required = current.snapshot.total_value * Decimal(str(strategy.cash_reserve_rate))
-                remaining = current.snapshot.cash_balance - value
+                remaining = current.snapshot.cash_balance - value - fee
                 if strategy.cash_reserve_rate > 0 and remaining < required:
                     raise ConflictError(
-                        f"Withdrawing {value} would leave {remaining:.2f} cash, below the strategy's "
-                        f"{strategy.cash_reserve_rate:.0%} reserve ({required:.2f}). "
-                        "Withdraw less or change the reserve first."
+                        f"Withdrawing {value}{fee_text} would leave {remaining:.2f} cash, below "
+                        f"the strategy's {strategy.cash_reserve_rate:.0%} reserve "
+                        f"({required:.2f}). Withdraw less or change the reserve first."
                     )
             flow = CashFlow(f"F-{uuid.uuid4().hex[:12]}", kind, value, now, portfolio.base_currency)
             signed = value if kind is CashFlowKind.CONTRIBUTION else -value
             with self._store.transaction():
                 self._store.append_cash_flow(portfolio_id, flow, note=clean_note)
+                if fee > 0:
+                    # The fee is a cost, not money the person took out: it is its own ledger entry
+                    # and it lowers the portfolio's value without counting as a withdrawal.
+                    self._store.append_cash_flow(
+                        portfolio_id,
+                        CashFlow(
+                            f"F-{uuid.uuid4().hex[:12]}",
+                            CashFlowKind.FEE,
+                            fee,
+                            now,
+                            portfolio.base_currency,
+                        ),
+                        note=f"Withdrawal fee for {flow.flow_id}",
+                    )
                 self._store.record_valuation(
                     portfolio_id,
                     ValuationPoint(
                         now,
-                        current.snapshot.total_value + signed,
+                        current.snapshot.total_value + signed - fee,
                         signed,
-                        current.snapshot.cash_balance + signed,
+                        current.snapshot.cash_balance + signed - fee,
                         kind.value,
                     ),
                 )
@@ -450,7 +523,12 @@ class PaperTradingService:
                     actor="user",
                     action=f"paper.cash.{kind.value}",
                     subject=portfolio_id,
-                    detail={"flow_id": flow.flow_id, "amount": str(value), "note": clean_note},
+                    detail={
+                        "flow_id": flow.flow_id,
+                        "amount": str(value),
+                        "fee": str(fee),
+                        "note": clean_note,
+                    },
                 )
         return await self.view(portfolio_id, record=False)
 
@@ -496,7 +574,15 @@ class PaperTradingService:
         asset_class: AssetClass | None = None,
         dry_run: bool = False,
         actor: str = "user",
+        whole_mix_verified: bool = False,
     ) -> OrderOutcome:
+        """Price, check and (unless ``dry_run``) record one simulated order.
+
+        ``whole_mix_verified`` is for the caller that places every order of a rebalance whose
+        finished mix it has already checked: the order-by-order concentration test is then not
+        applied to each intermediate step. Every other limit still is.
+        """
+
         if not dry_run:
             self._require_storage()
         portfolio = self._require(portfolio_id)
@@ -555,6 +641,7 @@ class PaperTradingService:
                 else None
             )
             now = self._clock()
+            fees = self.platform_fees()
 
             with self._store.transaction():
                 ledger = self._store.load_ledger(portfolio_id)
@@ -583,6 +670,8 @@ class PaperTradingService:
                         strategy=strategy,
                         portfolio_drawdown=self._drawdown(portfolio_id),
                         annualized_volatility=volatility,
+                        flat_fee=fees.per_trade,
+                        whole_mix_verified=whole_mix_verified,
                     )
                 if dry_run:
                     return OrderOutcome(decision, asset, False, True, None, portfolio.strategy_id)
@@ -692,12 +781,16 @@ class PaperTradingService:
             kind = (
                 "initial"
                 if stored_flow.origin in {"initial", "reset"}
-                else ("deposit" if f.kind is CashFlowKind.CONTRIBUTION else "withdrawal")
+                else {
+                    CashFlowKind.CONTRIBUTION: "deposit",
+                    CashFlowKind.FEE: "fee",
+                }.get(f.kind, "withdrawal")
             )
             label = {
                 "initial": "Starting capital",
                 "deposit": "Deposit",
                 "withdrawal": "Withdrawal",
+                "fee": "Withdrawal fee",
             }[kind]
             entries.append(
                 HistoryEntry(
